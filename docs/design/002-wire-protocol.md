@@ -62,6 +62,8 @@ S→C  WELCOME {clientId, serverTime, tickRate, resumeKey}   // hoặc ERROR
 
 ## INPUT
 
+> **Format chi tiết đã chốt trong design 005 §1** (thêm `serverTime` + `lastInputSeq` vào header SNAPSHOT/DELTA; INPUT `count=0` làm pure ack ở Phase 2; `collectionId` trong fullEntity theo 004 §7). Mục này và mục SNAPSHOT & DELTA giữ vai trò giải thích ý tưởng — khi mâu thuẫn, **004/005 thắng**.
+
 ```
 INPUT := seq(varint) ackTick(varint) count(u8) inputFrame{count}
 inputFrame := theo input schema người dùng định nghĩa (entity('Input', {...}))
