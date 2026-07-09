@@ -163,3 +163,4 @@ Budget hiệu năng (gate bằng test, xem §11): 64 entities × 8 leaf, encode+
 - [ ] Delta: đổi 1 leaf → mask đúng 1 bit, payload chỉ chứa leaf đó; mask bit order đúng đặc tả §8 (test với entity 9+ leaf để phủ byte thứ 2).
 - [ ] Diff: entity không đổi không xuất hiện; add/remove đúng; str đổi độ dài.
 - [ ] Perf gate: benchmark encode+diff 64×8 leaf < 0.5ms (dùng `it` thường, chạy 100 vòng lấy trung bình, threshold nới 3× để CI không flaky: assert < 1.5ms).
+- [ ] **Type-level test** (vùng rủi ro TS cao nhất — dùng `expectTypeOf` của vitest): `Infer<typeof Player>` cho đúng `{pos: {x: number, y: number}, angle: number, hp: number, name: string, ownerId: string}`; `Infer<typeof GameState>` cho `players: Map<number, ...>` và root scalar `matchTimer: number`; field sai kiểu khi gán → lỗi compile.

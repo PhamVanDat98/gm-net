@@ -72,4 +72,4 @@ Mỗi bước xanh test rồi mới sang bước sau; commit theo bước:
 
 ## 6. Git
 
-Remote: `https://github.com/PhamVanDat98/gm-net.git`, branch `main`. Commit theo mốc có ý nghĩa (mỗi bước ở §4), message tiếng Anh, thân bài liệt kê thay đổi chính. Luôn `pnpm build && pnpm test` xanh trước khi push.
+Remote: `https://github.com/PhamVanDat98/gm-net.git`, branch `main`. Commit theo mốc có ý nghĩa (mỗi bước ở §4), message tiếng Anh, thân bài liệt kê thay đổi chính. Luôn `pnpm build && pnpm test` xanh trước khi push — **CI (GitHub Actions, `.github/workflows/ci.yml`) chạy lại đúng 2 lệnh đó trên mỗi push/PR; push làm đỏ CI thì phải sửa ngay trước khi làm tiếp**. License: MIT.

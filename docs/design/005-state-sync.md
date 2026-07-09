@@ -75,6 +75,7 @@ interface TickEntry { tick: number; serverTime: number; state: ClientTickState }
 - Nhận SNAPSHOT: dựng ClientTickState từ đầu → push vào history (mảng, giữ ≤ 64 entry, sort theo tick — thực tế luôn tăng).
 - Nhận DELTA: tìm entry `baselineTick` trong history. **Không có → bỏ qua packet, KHÔNG ack** (server thấy ack không tiến sẽ tự gửi SNAPSHOT — cơ chế tự phục hồi của design 002). Có → clone structural-sharing: entity không đổi giữ nguyên reference, entity changed tạo EntitySnapshot mới (copy buf, vá leaf), áp removed/added → entry mới.
 - Sau khi áp dụng thành công tick T: gửi `INPUT{seq:0, ackTick:T, count:0}`. **Throttle: tối đa 1 ack / 33ms** (đủ cho 30Hz, không vượt rate limit).
+- **Budget rate limit (bắt buộc kiểm tra)**: client sync tiêu tốn nền ack ≤30/s + ping 2/s = 32 msg/s, trong khi `dataRatePerSec` mặc định 60 → chỉ còn ~28/s cho EVENT gameplay. Khi room là SyncRoom, `NetServer` phải nâng data bucket của session lên `dataRatePerSec + 40` (hoặc thêm option `syncRateBonus`) — nếu không, game bắn nhanh sẽ bị đá RATE_LIMITED một cách bí ẩn. Thêm e2e test: client trong SyncRoom gửi 25 event/s trong 3s không bị đá.
 - Delta/snapshot đến không theo thứ tự tick tăng (không xảy ra trên WS, sẽ xảy ra trên WebRTC): tick ≤ tick mới nhất đã có → bỏ qua.
 
 ## 5. Client: `StateView` (interpolation)
