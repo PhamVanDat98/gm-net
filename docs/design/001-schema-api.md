@@ -1,6 +1,6 @@
 # Design 001 — Schema API
 
-Trạng thái: **Draft — cần review trước khi code Phase 2**
+Trạng thái: **Đã chốt (2026-07-09) — sẵn sàng code Phase 2**
 
 Schema là API người dùng chạm vào nhiều nhất và khó sửa nhất sau khi phát hành. Tài liệu này chốt hình dáng API trước khi viết dòng code nào.
 
@@ -93,8 +93,8 @@ room.state.players.get(id).hp -= 10   // chỉ vậy, không markDirty()
 - Union types / polymorphic field.
 - Migration schema tự động giữa version.
 
-## Câu hỏi mở (chốt khi bắt đầu Phase 2)
+## Các quyết định đã chốt (2026-07-09)
 
-1. `map()` key: chỉ cho phép varint id do lib cấp, hay cho string key? (nghiêng về: id do lib cấp, có API `room.spawn(Player, {...})` trả id)
-2. Presence/change mask: 1 bit/field, làm tròn byte — entity >32 fields có cần không? (nghiêng về: giới hạn 64 fields/entity, đủ xa)
-3. Interpolation hint đặt trong schema (`pos: vec2(f32).lerp()`) hay config phía client? (nghiêng về: schema — một nguồn sự thật)
+1. **`map()` key = varint id do thư viện cấp.** API `room.spawn(collection, {...})` trả về entity đã có `id`; user tự lưu liên kết client↔entity (vd `client.data.player = p`). Không cho string key — key string bị lặp trong mọi delta, phá mục tiêu băng thông.
+2. **Giới hạn cứng 64 field/entity.** Change mask luôn ≤ 8 byte. Schema >64 field ném lỗi ngay lúc `entity()` chạy, thông điệp hướng dẫn tách nested entity.
+3. **Interpolation hint nằm trong schema, có mặc định thông minh.** Mặc định: float/vec → lerp, int/bool/string → step. Ghi đè khi đặc biệt: `.lerpAngle()` (góc có wrap-around), `.slerp()` (quaternion), `.step()` (float không muốn nội suy). Client render tự đọc hint từ schema — một nguồn sự thật.
