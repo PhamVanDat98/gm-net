@@ -1,0 +1,19 @@
+{
+  "name": "@gm-net/client",
+  "version": "0.0.1",
+  "description": "gm-net client: connect/reconnect, snapshot buffer, interpolation, prediction (Phase 1+)",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@gm-net/core": "workspace:*"
+  }
+}

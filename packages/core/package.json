@@ -1,0 +1,16 @@
+{
+  "name": "@gm-net/core",
+  "version": "0.0.1",
+  "description": "Isomorphic core for gm-net: binary encoding, schema, protocol, transport interface",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}
