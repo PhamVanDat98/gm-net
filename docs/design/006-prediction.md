@@ -2,6 +2,17 @@
 
 Trạng thái: **Đặc tả mức kiến trúc — chi tiết hóa thêm khi Phase 2 xong.** Phụ thuộc: 004, 005.
 
+## 0. Determinism: cần đến đâu, và vì sao JS full-stack là lợi thế
+
+Câu hỏi thường gặp: "prediction/reconciliation có cần vật lý deterministic không?" — **Không cần deterministic tuyệt đối (bit-exact).** Phân biệt rõ:
+
+- **Lockstep** (NGOÀI scope, xem BRAINSTORM): mọi máy tự mô phỏng, chỉ trao đổi input → lệch 1 bit là hai thế giới phân kỳ vĩnh viễn, không cơ chế nào sửa. Vì thế lockstep đòi bit-exact determinism — điều JS không đảm bảo giữa các engine (Math.sin/cos/pow không chuẩn hóa bit-exact).
+- **Prediction + reconciliation** (kiến trúc của gm-net): server luôn là chân lý; client chỉ *đoán trước*. Mọi sai lệch — kể cả do floating-point — được sửa tự động ở mỗi snapshot qua replay + error smoothing (§4). Lệch nhỏ chỉ tạo correction vài milimet, decay êm trong ~80ms.
+
+Điều thực sự cần là **simulation hai đầu giống nhau ở mức thực dụng** — càng giống, prediction càng trúng, correction càng hiếm. Đây chính là lý do chọn JS/TS full-stack cho dự án (quyết định gốc của product owner): "cùng logic simulation" trở thành **import cùng một file** (`shared/simulation.js`), thay vì viết lại bằng hai ngôn ngữ — nguồn bug lệch prediction kinh điển của các stack C#-server/JS-client. Khi dùng physics engine WASM (design 008): cùng một binary WASM cho kết quả như nhau trên mọi máy (đặc tả WASM cố định IEEE 754 float ops) → thực dụng deterministic mà không cần cố gắng gì thêm.
+
+Hệ quả cho người triển khai: **không** phí công làm fixed-point math hay ép determinism tuyệt đối; **có** enforce pattern shared module bằng docs + example.
+
 ## 1. Vấn đề
 
 Với snapshot interpolation thuần (Phase 2), nhân vật của CHÍNH người chơi trễ `interpDelay + RTT/2` so với phím bấm — cảm giác "bơi". Phase 3: client mô phỏng ngay input của mình (prediction), server vẫn là chân lý (reconciliation khi lệch).
@@ -43,7 +54,7 @@ const predictor = new Predictor(view, {
 })
 ```
 
-**Ràng buộc thiết kế quan trọng**: hàm `simulate` phải được viết chung (shared module) giữa client và server — docs hướng dẫn cấu trúc project: `shared/simulation.js` import từ cả 2 phía. Thư viện không ép được điều này, chỉ enforce bằng tài liệu + example.
+**Ràng buộc thiết kế quan trọng**: hàm `simulate` phải được viết chung (shared module) giữa client và server — docs hướng dẫn cấu trúc project: `shared/simulation.js` import từ cả 2 phía. Thư viện không ép được điều này, chỉ enforce bằng tài liệu + example. Khi simulation có va chạm vật lý (character controller, game kiểu Roblox) → xem design 008 (một Rapier world hai đầu, chia đôi nhóm body predicted/interpolated).
 
 ## 4. Vòng prediction (client, mỗi render frame)
 

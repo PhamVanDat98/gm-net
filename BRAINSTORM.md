@@ -83,9 +83,16 @@ Serialization: binary, schema khai báo kiểu (`float32`, `int16`, quantization
 - Interest management (grid/octree) cho phòng đông.
 - Docs site hoàn chỉnh: concepts, getting started per-engine, recipes, API reference.
 
-### Phase 5+ (backlog)
+### Phase 5 — Physics (thêm 2026-07-09, xem design 008)
+- Adapter `@gm-net/physics-rapier` (package riêng, optional): MỘT Rapier world chạy cả server lẫn client; render engine chỉ vẽ.
+- Chia đôi thế giới: nhân vật = kinematic controller (predicted), vật thể động = server-simulated + ghost nội suy phía client.
+- Milestone demo `roblox-mini` (three.js): đi lại/nhảy predicted, đẩy thùng ném bóng server-simulated, chơi được ở 150ms ping.
+- Mục tiêu sản phẩm mở rộng: game 3D kiểu Roblox (nhiều vật thể động tương tác).
+
+### Phase 6+ (backlog)
 - transport-webrtc (kênh unreliable), WebTransport.
 - Lag compensation (server rewind cho hit detection).
+- Network ownership kiểu Roblox: client sở hữu mô phỏng body gần mình, server validate thô (design 008 §6) — cần "client-writable fields" trong schema.
 - Queue-based matchmaking, persistence adapter, multi-node.
 
 ## Backlog "dễ quên"
