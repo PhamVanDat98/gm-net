@@ -63,6 +63,48 @@ export interface ConnectOptions {
   joinOptions?: Record<string, unknown>;
 }
 
+/** SeatReservation theo shape colyseus.js 0.16 (`consumeSeatReservation`). */
+interface SeatReservation016 {
+  room: { name: string; roomId: string; processId: string; publicAddress?: string };
+  sessionId: string;
+}
+
+/**
+ * Matchmake HTTP tự làm thay `client.joinOrCreate`: server `colyseus` 0.17 trả
+ * reservation dạng PHẲNG `{name, roomId, processId, sessionId}` trong khi
+ * colyseus.js 0.16 (bản client mới nhất) mong dạng lồng `{room: {...},
+ * sessionId}` — lệch protocol đã lường ở [004] §7; reshape ở đây rồi đưa vào
+ * `consumeSeatReservation` (đường WS + room protocol hai bản vẫn khớp).
+ */
+async function reserveSeat(
+  endpoint: string,
+  roomName: string,
+  options: Record<string, unknown> = {},
+): Promise<SeatReservation016> {
+  const url = `${endpoint.replace(/^ws/, 'http')}/matchmake/joinOrCreate/${roomName}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(options),
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok || data.error !== undefined) {
+    throw new Error(`matchmake ${roomName} thất bại: ${String(data.error ?? res.status)}`);
+  }
+  if (typeof data.room === 'object' && data.room !== null) {
+    return data as unknown as SeatReservation016; // server 0.16: shape cũ, dùng thẳng
+  }
+  return {
+    room: {
+      name: data.name as string,
+      roomId: data.roomId as string,
+      processId: data.processId as string,
+      publicAddress: data.publicAddress as string | undefined,
+    },
+    sessionId: data.sessionId as string,
+  };
+}
+
 /**
  * Tiện ích join một `GameRoom` và trả sẵn transport. Dùng cho client Node/browser
  * thật (demo M5, headless bot Phase 2). `endpoint` vd `ws://localhost:2567`.
@@ -72,6 +114,11 @@ export async function connectGameRoom(
   opts: ConnectOptions = {},
 ): Promise<{ client: Client; room: Room; transport: ClientTransport }> {
   const client = new Client(endpoint);
-  const room = await client.joinOrCreate(opts.roomName ?? 'game', opts.joinOptions);
+  const reservation = await reserveSeat(endpoint, opts.roomName ?? 'game', opts.joinOptions);
+  const room = await client.consumeSeatReservation(
+    // 0.16 khai báo room: RoomAvailable (clients/maxClients) nhưng chỉ đọc
+    // name/roomId/processId/publicAddress — reservation 0.17 không có hai field kia.
+    reservation as unknown as Parameters<Client['consumeSeatReservation']>[0],
+  );
   return { client, room, transport: colyseusTransport(room) };
 }

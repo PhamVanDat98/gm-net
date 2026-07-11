@@ -28,7 +28,7 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 | Input schema + input buffer (seq number) | [004](004-netcode.md) §3–4 | ✅ server `InputBuffer` (M2) + client `InputPipeline` sample/redundancy/adaptive-lead (M3) + test |
 | Client-side prediction cho local player | [004](004-netcode.md) §5 | ✅ `PredictionWorld` (M4): timeline liên tục, ring kép state+input 30 slot, box-sim Rapier chạy chung client/server |
 | Server reconciliation (ring buffer snapshot ~1s, restore + replay) | [004](004-netcode.md) §5 | ✅ `Reconciler` (M4): so quantized-vs-quantized + epsilon, restore+replay idempotent; server ring history 30 slot (`RoomEngine.snapshotAt`) |
-| Snapshot interpolation remote (~100ms) | [004](004-netcode.md) §6 | ⬜ |
+| Snapshot interpolation remote (~100ms) | [004](004-netcode.md) §6 | ✅ `InterpolationBuffer` (M5): stream-clock + adaptive delay 100→200ms + extrapolate cap 2 tick; lớp ghép `GameSession.getRenderState` + test |
 | Binary serialization + quantization | [005](005-serialization.md) | ✅ `@gm-net/core` protocol (M1) + test round-trip/golden/fuzz |
 | Clock sync + RTT, adaptive input buffer | [004](004-netcode.md) §2, §4 | ✅ client `ClockSync` (min-RTT/jitter/serverTickNow) + adaptive `inputLead` (M3) + test |
 
@@ -57,14 +57,13 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 **[CHỐT]** 5 bước, trạng thái hiện tại (2026-07-11):
 
 1. ✅ `pnpm init` monorepo, scaffold packages, tsconfig. (Xong — commit `67b5636`.)
-2. ✅ Spike Rapier2D Node + browser*, verify `takeSnapshot/restoreSnapshot` replay
-   identical. (*Node đã PASS bit-perfect; nửa browser chạy khi demo-2d có trang web —
-   dùng bản `-compat` nên rủi ro thấp.)
-3. 🔶 Fixed timestep loop ✅ + input sequence protocol ⬜ (chưa cần physics).
-4. 🔶 Demo tối giản: 1 box di chuyển, prediction + reconciliation hoạt động, đo
-   misprediction khi giả lập lag. (M4 ✅ ở tầng loopback headless: box Rapier + trễ
-   giả lập 0/100ms, misprediction/s = 0 khi di chuyển tự do, đúng 1 correction khi
-   server đẩy box — `packages/client/test/prediction.test.ts`. Còn lại demo web M5.)
+2. ✅ Spike Rapier2D Node + browser, verify `takeSnapshot/restoreSnapshot` replay
+   identical. (Node PASS bit-perfect; browser chạy trong demo-2d M5 — `-compat`
+   init WASM qua vite không cần cấu hình thêm.)
+3. ✅ Fixed timestep loop + input sequence protocol.
+4. ✅ Demo tối giản: box di chuyển, prediction + reconciliation, đo misprediction
+   dưới lag giả lập. (M4 loopback headless + M5 demo web `examples/demo-2d` +
+   e2e proxy 200ms/5% — `examples/demo-2d/test/e2e.test.ts`.)
 5. ⬜ Benchmark: snapshot size & thời gian restore với 50/200/500 bodies.
 
 ## 4. Kế hoạch benchmark (bước 5)
@@ -87,6 +86,12 @@ viết **proxy delay thuần Node** trong repo (`examples/` hoặc `packages/` t
 proxy chèn delay mỗi chiều + drop ngẫu nhiên theo tỉ lệ cấu hình (200ms/5% cho bài nghiệm
 thu §1). Ưu điểm: chạy được cả trong CI/Linux, tái lập chính xác, không cần quyền admin
 (clumsy/WinDivert cần). Đây cũng chính là công cụ đo misprediction ở bước 4 tuần đầu.
+
+**Đã làm ở M5:** `@gm-net/netem-proxy` — proxy WS mức message (WS chạy trên TCP nên
+"packet loss" = drop nguyên message WS, đúng semantics netcode UDP-style cần), delay mỗi
+chiều + drop rate + PRNG seed được; forward HTTP matchmaking nguyên vẹn; `graceMs` đầu
+kết nối không drop (join/handshake thuộc kênh reliable, không thuộc bài loss). CLI:
+`pnpm --filter demo-2d proxy` (2568 → 2567, RTT +200ms, drop 5%).
 
 ## 6. Thứ tự việc tiếp theo (đề xuất)
 

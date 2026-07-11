@@ -215,7 +215,11 @@ và đánh dấu tại đây khi nghiệm thu:
 - [x] M2 — Server skeleton (`@gm-net/server`: RoomEngine echo + InputBuffer jitter + TickScheduler drift-corrected + GameRoom/createGameServer)
 - [x] M3 — Client runtime skeleton (`@gm-net/client`: GameClient transport-agnostic + ClockSync + InputPipeline redundancy/adaptive lead + SnapshotReceiver; adapter colyseus.js; nghiệm thu qua loopback in-memory)
 - [x] M4 — Prediction + reconciliation (`shared`: interface `Simulation` + demo `box-sim` Rapier subpath export; `server`: `createSimulationGame` + ring history 30 slot; `client`: `PredictionWorld` timeline liên tục + `Reconciler` quantized-epsilon + `TransformSmoother` + `PredictionMetrics`; nghiệm thu loopback RTT ~0: misprediction/s = 0, đẩy box → đúng 1 correction, replay idempotent bit-perfect)
-- [ ] M5 — Demo 2D + nghiệm thu Phase 1 ⭐
+- [x] M5 — Demo 2D + nghiệm thu Phase 1 ⭐ (`client`: `InterpolationBuffer` stream-clock
+  + adaptive delay + lớp ghép `GameSession.getRenderState`; `@gm-net/netem-proxy` WS
+  delay/drop/seed; `examples/demo-2d` server + canvas 2D + HUD (kiểm chứng Rapier
+  browser); e2e socket thật qua proxy 200ms RTT + 5% loss đạt ngưỡng 008 §1;
+  `connectGameRoom` tự matchmake reshape reservation 0.17→0.16)
 - [ ] M6 — Benchmark snapshot
 - [ ] M7–M11 — Phase 2
 - [ ] M12–M14 — Phase 3

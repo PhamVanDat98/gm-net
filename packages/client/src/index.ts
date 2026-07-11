@@ -2,8 +2,9 @@
  * @gm-net/client — client runtime: clock sync, input pipeline (redundancy +
  * adaptive lead), snapshot receiver, quanh một transport trừu tượng; prediction +
  * reconciliation (M4: `PredictionWorld`/`Reconciler` cắm qua `onSnapshot`, kèm
- * `TransformSmoother`/`PredictionMetrics`). Interpolation remote là M5. Không
- * import DOM — chạy cả Node (headless bot) lẫn browser.
+ * `TransformSmoother`/`PredictionMetrics`); interpolation remote + lớp ghép
+ * `GameSession.getRenderState` (M5). Không import DOM — chạy cả Node (headless
+ * bot) lẫn browser.
  */
 export { GameClient, type GameClientOptions, type ClientMetrics } from './client.js';
 export { ClockSync, type ClockSyncOptions } from './clock.js';
@@ -32,6 +33,18 @@ export {
   type TransformSmootherOptions,
   type RenderTransform,
 } from './render-state.js';
+export {
+  InterpolationBuffer,
+  type InterpolationOptions,
+  type InterpolatedEntity,
+  type InterpolationStats,
+} from './interpolation.js';
+export {
+  GameSession,
+  type GameSessionOptions,
+  type RenderState,
+  type SessionHud,
+} from './session.js';
 export {
   PredictionMetrics,
   type PredictionMetricsOptions,
