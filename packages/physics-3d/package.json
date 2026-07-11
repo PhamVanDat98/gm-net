@@ -1,5 +1,5 @@
 {
-  "name": "@gm-net/client",
+  "name": "@gm-net/physics-3d",
   "version": "0.0.0",
   "type": "module",
   "exports": {
@@ -12,7 +12,6 @@
     "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
   },
   "dependencies": {
-    "@gm-net/core": "workspace:*",
-    "@gm-net/shared": "workspace:*"
+    "@gm-net/core": "workspace:*"
   }
 }

@@ -1,0 +1,12 @@
+{
+  "name": "demo-2d",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@gm-net/client": "workspace:*",
+    "@gm-net/physics-2d": "workspace:*",
+    "@gm-net/server": "workspace:*",
+    "@gm-net/shared": "workspace:*"
+  }
+}

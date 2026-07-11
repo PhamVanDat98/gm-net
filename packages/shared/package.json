@@ -1,5 +1,5 @@
 {
-  "name": "@gm-net/client",
+  "name": "@gm-net/shared",
   "version": "0.0.0",
   "type": "module",
   "exports": {
@@ -10,9 +10,5 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
-  },
-  "dependencies": {
-    "@gm-net/core": "workspace:*",
-    "@gm-net/shared": "workspace:*"
   }
 }

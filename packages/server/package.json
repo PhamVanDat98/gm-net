@@ -1,19 +1,19 @@
 {
   "name": "@gm-net/server",
-  "version": "0.0.1",
-  "description": "gm-net server: rooms, tick loop, lobby (Phase 1)",
+  "version": "0.0.0",
   "type": "module",
-  "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
+  },
   "dependencies": {
-    "@gm-net/core": "workspace:*"
+    "@gm-net/core": "workspace:*",
+    "@gm-net/shared": "workspace:*",
+    "colyseus": "^0.17.10"
   }
 }

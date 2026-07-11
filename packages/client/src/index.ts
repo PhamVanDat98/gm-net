@@ -1,3 +1,6 @@
-export { NetClient, ClientRoom, NetError } from './client.js'
-export type { NetClientOptions, ClientStatus, TransportFactory } from './client.js'
-export type { RoomLeftReason, RoomListing, Transport } from '@gm-net/core'
+/**
+ * @gm-net/client — client runtime: prediction cho local player,
+ * reconciliation, snapshot interpolation cho remote entities (render delay
+ * ~100ms), clock sync. Hỗ trợ headless mode cho bot/load test (Phase 2).
+ */
+export {};
