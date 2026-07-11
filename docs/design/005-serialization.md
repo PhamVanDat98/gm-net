@@ -92,6 +92,24 @@ input × count (từ cũ → mới):
   [payload]               ← encoder input của game
 ```
 
+## 6b. Format `PING` / `PONG`
+
+**[ĐỀ XUẤT]** (BRAINSTORM chỉ chốt "clock sync"; format cụ thể chốt tại M1). Dùng
+cho đo RTT + ước lượng đồng hồ/tick server ([004] clock sync). Thời gian cắt còn u32 ms
+(wrap ~49 ngày — dư cho RTT vì client trừ với chính đồng hồ mình).
+
+```
+PING
+u8  messageType = PING
+u32 clientTime            ← đồng hồ client lúc gửi
+
+PONG
+u8  messageType = PONG
+u32 clientTime            ← echo lại clientTime của ping
+u32 serverTime            ← đồng hồ server lúc trả
+u32 serverTick            ← tick server lúc trả (ước lượng serverTickNow)
+```
+
 ## 7. Kích thước ước tính (sanity check)
 
 Full snapshot, entity transform-only: 2+1+4+4+2 = 13 byte/entity + header ~10 byte.

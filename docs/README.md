@@ -13,6 +13,12 @@ Mỗi tài liệu phân biệt rõ hai loại nội dung:
 - **[ĐỀ XUẤT]** — diễn giải kỹ thuật thêm để đủ chi tiết triển khai (con số cụ thể, format,
   thuật toán). Có thể chỉnh khi code va thực tế, nhưng đổi thì cập nhật doc.
 
+## Kế hoạch triển khai
+
+[IMPLEMENTATION.md](IMPLEMENTATION.md) — bản đồ milestone M1–M14 với task mức file/module,
+tiêu chí nghiệm thu, test đi kèm, rủi ro & điểm thoát. Đây là tài liệu điều phối khi code;
+các design doc dưới đây là đặc tả mà kế hoạch tham chiếu.
+
 ## Danh sách tài liệu
 
 | # | Tài liệu | Nội dung | Phase liên quan |

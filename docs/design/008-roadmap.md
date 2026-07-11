@@ -29,7 +29,7 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 | Client-side prediction cho local player | [004](004-netcode.md) §5 | ⬜ |
 | Server reconciliation (ring buffer snapshot ~1s, restore + replay) | [004](004-netcode.md) §5 | ⬜ (spike Rapier ✅) |
 | Snapshot interpolation remote (~100ms) | [004](004-netcode.md) §6 | ⬜ |
-| Binary serialization + quantization | [005](005-serialization.md) | ⬜ |
+| Binary serialization + quantization | [005](005-serialization.md) | ✅ `@gm-net/core` protocol (M1) + test round-trip/golden/fuzz |
 | Clock sync + RTT, adaptive input buffer | [004](004-netcode.md) §2, §4 | ⬜ |
 
 ### Phase 2 — Production features
