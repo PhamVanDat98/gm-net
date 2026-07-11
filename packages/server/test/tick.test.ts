@@ -67,6 +67,51 @@ describe('TickScheduler', () => {
     }
   });
 
+  it('onTick ném exception → loop sống tiếp, lỗi đi qua onError', () => {
+    const fake = new FakeTimers();
+    const seen: number[] = [];
+    const errors: Array<{ tick: number; err: unknown }> = [];
+    const s = new TickScheduler({
+      stepMs: 10,
+      now: fake.now,
+      setTimer: fake.setTimer,
+      clearTimer: fake.clearTimer,
+      onTick: (tick) => {
+        if (tick === 1 || tick === 3) throw new Error(`bùm ${tick}`);
+        seen.push(tick);
+      },
+      onError: (err, tick) => errors.push({ tick, err }),
+    });
+    s.start();
+    for (let i = 0; i < 6; i++) fake.runNext();
+
+    expect(seen).toEqual([0, 2, 4, 5]); // tick lỗi bị bỏ nhưng loop không chết
+    expect(errors.map((e) => e.tick)).toEqual([1, 3]);
+    expect((errors[0].err as Error).message).toBe('bùm 1');
+    expect(s.isRunning).toBe(true);
+  });
+
+  it('stop() gọi từ trong onTick → không schedule thêm timer nào', () => {
+    const fake = new FakeTimers();
+    const seen: number[] = [];
+    const s = new TickScheduler({
+      stepMs: 10,
+      now: fake.now,
+      setTimer: fake.setTimer,
+      clearTimer: fake.clearTimer,
+      onTick: (tick) => {
+        seen.push(tick);
+        if (tick === 2) s.stop();
+      },
+    });
+    s.start();
+    while (fake.runNext()) {
+      // chạy tới khi hết timer — stop() trong onTick không được để lại timer treo
+    }
+    expect(seen).toEqual([0, 1, 2]);
+    expect(s.isRunning).toBe(false);
+  });
+
   it('tick tăng đơn điệu và stop() dừng hẳn', () => {
     const fake = new FakeTimers();
     const seen: number[] = [];

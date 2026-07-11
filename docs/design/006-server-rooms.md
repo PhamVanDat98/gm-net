@@ -38,6 +38,11 @@ reservation**, bypass hoàn toàn schema sync; dữ liệu game đi qua `sendByt
     (`server/src/tick.ts`), timer injectable để unit-test bằng đồng hồ ảo (đo 100 tick,
     drift < 1 tick). Nghiệm thu "echo simulation, 2 client thấy nhau" test ở tầng
     `RoomEngine` (tách khỏi socket); e2e qua socket + proxy để dành M5.
+  - **Tick loop phải sống sót lỗi game logic**: exception từ `onTick` được bắt và đưa
+    qua `onError` (mặc định log) — nếu để thoát ra timer callback thì loop chết im lặng
+    (không ai schedule tiếp) và uncaught exception có thể sập process. `GameRoom.step`
+    cũng bỏ qua client chưa kịp có record trong engine (Colyseus thêm client vào
+    `this.clients` trước khi gọi `onJoin`).
 - Một tick T:
   1. Rút input `tick == T` từ jitter buffer per-client ([004](004-netcode.md) §4);
      client thiếu input → lặp input cuối (config).
@@ -56,8 +61,15 @@ reservation**, bypass hoàn toàn schema sync; dữ liệu game đi qua `sendByt
 **[ĐỀ XUẤT]** — hệ quả của server-authoritative ([001](001-architecture.md) §5):
 
 - Clamp payload: trục analog vào [-1,1], độ dài vector ≤ 1.
-- Cửa sổ tick hợp lệ: bỏ input có tick lệch quá ±1s so với tick hiện tại.
-- Ngân sách: tối đa ~2 input mới/tick/client (đề phòng flood); vượt → drop + đếm.
+- Cửa sổ tick hợp lệ: bỏ input có tick lệch quá ±1s so với tick hiện tại (bỏ **vĩnh
+  viễn** — tick ngoài giờ là gian lận/lỗi, có đánh dấu seq đã thấy).
+- Ngân sách: tối đa ~2 input mới/tick/client (đề phòng flood); vượt → **hoãn** phần còn
+  lại của packet, *không* đánh dấu seq đã thấy — redundancy của packet sau mang lại khi
+  budget đã reset. (Kết luận M2: nếu đánh dấu rồi drop, input hợp lệ dồn về sau burst mất
+  gói sẽ mất vĩnh viễn vì resend bị coi là duplicate — redundancy bị vô hiệu đúng lúc cần.)
+- Input muộn (tick đã qua, không bao giờ áp được): chỉ đếm cho adaptive lead, không tốn
+  budget, không vào buffer. `lateInputs` trong snapshot là **delta kể từ snapshot trước**
+  ([005](005-serialization.md) §3), không phải tổng tích lũy.
 - Mọi input bị bỏ đều tăng counter có thể quan sát được ([004](004-netcode.md) §8).
 
 ## 4. Lag compensation (Phase 2)

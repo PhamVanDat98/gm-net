@@ -18,6 +18,9 @@ export {
 export {
   PROTOCOL_VERSION,
   MessageType,
+  seqGreater,
+  seqGreaterEqual,
+  seqDistance,
   ProtocolCodec,
   ProtocolError,
   peekMessageType,

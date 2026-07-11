@@ -121,14 +121,22 @@ export class RoomEngine<World = unknown, Input = unknown> {
     this._tick = t + 1;
   }
 
-  /** Snapshot đầy đủ cho một client (ack `lastProcessedSeq` + `lateInputs` riêng). */
+  /** Client này đã có record trong engine chưa (room dùng để guard tick loop). */
+  hasClient(sessionId: string): boolean {
+    return this.clients.has(sessionId);
+  }
+
+  /**
+   * Snapshot đầy đủ cho một client (ack `lastProcessedSeq` + `lateInputs` riêng).
+   * `lateInputs` = số input muộn *kể từ snapshot trước* (consume-on-read).
+   */
   encodeSnapshotFor(sessionId: string): Uint8Array {
     const c = this.clients.get(sessionId);
     if (!c) throw new Error(`RoomEngine: client không tồn tại (${sessionId})`);
     return this.codec.encodeSnapshot({
       serverTick: this._tick,
       lastProcessedSeq: c.buffer.lastProcessedSeq,
-      lateInputs: Math.min(255, c.buffer.lateInputs),
+      lateInputs: Math.min(255, c.buffer.consumeLateInputs()),
       entities: this.game.readEntities(this.world),
     });
   }

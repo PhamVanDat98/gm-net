@@ -1,4 +1,5 @@
 export { PROTOCOL_VERSION, MessageType } from './constants.js';
+export { seqGreater, seqGreaterEqual, seqDistance } from './seq.js';
 export {
   ProtocolCodec,
   ProtocolError,

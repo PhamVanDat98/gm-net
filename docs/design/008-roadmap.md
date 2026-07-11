@@ -25,12 +25,12 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 | Hạng mục | Thiết kế | Trạng thái |
 |---|---|---|
 | Fixed timestep loop (server 30Hz sim, client 60Hz render) | [004](004-netcode.md) §1 | ✅ `FixedTimestep` (core) + test |
-| Input schema + input buffer (seq number) | [004](004-netcode.md) §3–4 | ✅ server-side `InputBuffer` (M2) + test; sample/redundancy phía client là M3 |
+| Input schema + input buffer (seq number) | [004](004-netcode.md) §3–4 | ✅ server `InputBuffer` (M2) + client `InputPipeline` sample/redundancy/adaptive-lead (M3) + test |
 | Client-side prediction cho local player | [004](004-netcode.md) §5 | ⬜ |
 | Server reconciliation (ring buffer snapshot ~1s, restore + replay) | [004](004-netcode.md) §5 | ⬜ (spike Rapier ✅) |
 | Snapshot interpolation remote (~100ms) | [004](004-netcode.md) §6 | ⬜ |
 | Binary serialization + quantization | [005](005-serialization.md) | ✅ `@gm-net/core` protocol (M1) + test round-trip/golden/fuzz |
-| Clock sync + RTT, adaptive input buffer | [004](004-netcode.md) §2, §4 | ⬜ |
+| Clock sync + RTT, adaptive input buffer | [004](004-netcode.md) §2, §4 | ✅ client `ClockSync` (min-RTT/jitter/serverTickNow) + adaptive `inputLead` (M3) + test |
 
 ### Phase 2 — Production features
 

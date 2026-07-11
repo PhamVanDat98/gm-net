@@ -2,11 +2,14 @@
  * Jitter buffer input per-client ([docs/design/006-server-rooms.md] §2–3,
  * [004] §4). Nhận packet `INPUT` (redundancy 3–5), dedupe theo seq, xếp theo
  * tick, rút tại tick T (thiếu → lặp input cuối), đồng thời police:
- * - cửa sổ tick hợp lệ ±`maxTickSkew` (bỏ input tick ngoài giờ);
- * - ngân sách `budgetPerTick` input mới/tick/client (chống flood);
- * - đếm `lateInputs` (input tới sau khi tick của nó đã qua) cho adaptive lead.
+ * - cửa sổ tick hợp lệ ±`maxTickSkew` (bỏ vĩnh viễn input tick ngoài giờ);
+ * - ngân sách `budgetPerTick` input mới/tick/client (chống flood) — hết budget
+ *   thì *hoãn* phần còn lại của packet, không đánh dấu đã thấy, để redundancy
+ *   của packet sau mang lại (không mất input sau burst mất gói);
+ * - đếm input muộn (tick của nó đã qua, không bao giờ áp được) cho adaptive
+ *   lead — đọc theo cửa sổ qua {@link InputBuffer.consumeLateInputs}.
  */
-import type { InputMessage } from '@gm-net/core';
+import { seqGreater, type InputMessage } from '@gm-net/core';
 
 export interface InputBufferOptions {
   /** Cửa sổ tick hợp lệ tính bằng số tick (≈1s). */
@@ -24,14 +27,10 @@ export interface TakeResult<P> {
 
 export interface InputBufferStats {
   lateInputs: number;
+  /** Input bị hoãn vì hết budget (có thể được nhận lại từ redundancy sau). */
   droppedFlood: number;
   droppedWindow: number;
   duplicates: number;
-}
-
-/** So sánh seq 16-bit có xét wrap-around: `a` mới hơn `b`. */
-export function seqGreater(a: number, b: number): boolean {
-  return a !== b && ((a - b) & 0xffff) < 0x8000;
 }
 
 export class InputBuffer<P = unknown> {
@@ -43,6 +42,7 @@ export class InputBuffer<P = unknown> {
   private hasApplied = false;
 
   private _lateInputs = 0;
+  private _lateSinceRead = 0;
   private _droppedFlood = 0;
   private _droppedWindow = 0;
   private _duplicates = 0;
@@ -57,8 +57,20 @@ export class InputBuffer<P = unknown> {
     return this.lastAppliedSeq < 0 ? 0 : this.lastAppliedSeq;
   }
 
+  /** Tổng input muộn trọn đời (quan sát/metrics — không dùng cho adaptive lead). */
   get lateInputs(): number {
     return this._lateInputs;
+  }
+
+  /**
+   * Số input muộn *kể từ lần đọc trước* rồi reset — mỗi snapshot mang delta của
+   * riêng nó. Không dùng counter trọn đời: nó chỉ tăng nên sau ~255 lần muộn sẽ
+   * bão hòa u8 vĩnh viễn, client tưởng "đang muộn liên tục" dù mạng đã ổn.
+   */
+  consumeLateInputs(): number {
+    const n = this._lateSinceRead;
+    this._lateSinceRead = 0;
+    return n;
   }
 
   get pendingCount(): number {
@@ -93,21 +105,33 @@ export class InputBuffer<P = unknown> {
         this._duplicates++;
         continue;
       }
-      this.highestSeq = seq; // đánh dấu đã thấy (kể cả khi drop dưới đây)
 
-      // Cửa sổ tick hợp lệ (input tick ngoài giờ → gian lận/lỗi).
+      // Cửa sổ tick hợp lệ (input tick ngoài giờ → gian lận/lỗi): bỏ vĩnh viễn.
       if (Math.abs(entry.tick - serverTick) > this.opts.maxTickSkew) {
+        this.highestSeq = seq;
         this._droppedWindow++;
         continue;
       }
-      // Ngân sách chống flood.
-      if (this.budgetUsed >= this.opts.budgetPerTick) {
-        this._droppedFlood++;
+
+      // Muộn (tick đã qua): không bao giờ rút được → chỉ đếm cho adaptive
+      // lead, không tốn budget, không vào pending.
+      if (entry.tick < serverTick) {
+        this.highestSeq = seq;
+        this._lateInputs++;
+        this._lateSinceRead++;
         continue;
       }
-      this.budgetUsed++;
 
-      if (entry.tick < serverTick) this._lateInputs++; // tới muộn hơn tick của nó
+      // Hết ngân sách tick này: DỪNG cả packet, KHÔNG đánh dấu đã thấy —
+      // redundancy của packet sau mang lại các seq này (budget đã reset).
+      // Nếu đánh dấu, input hợp lệ sau burst mất gói sẽ mất vĩnh viễn
+      // (resend bị coi là duplicate). Duyệt cũ → mới nên watermark vẫn đúng.
+      if (this.budgetUsed >= this.opts.budgetPerTick) {
+        this._droppedFlood += count - i;
+        break;
+      }
+      this.budgetUsed++;
+      this.highestSeq = seq;
       this.pending.set(entry.tick, { seq, payload: entry.payload });
     }
   }

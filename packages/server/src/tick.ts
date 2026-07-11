@@ -12,6 +12,12 @@ export interface TickSchedulerOptions {
   /** Độ dài một tick (ms). */
   stepMs: number;
   onTick: (tick: number) => void;
+  /**
+   * Nhận lỗi ném từ `onTick` (mặc định `console.error`). Loop LUÔN sống tiếp:
+   * exception thoát khỏi timer callback vừa giết tick loop im lặng (không còn
+   * ai schedule tiếp) vừa là uncaught exception có thể sập process Node.
+   */
+  onError?: (err: unknown, tick: number) => void;
   now?: () => number;
   setTimer?: (cb: () => void, delayMs: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -81,7 +87,15 @@ export class TickScheduler {
 
   private fire(): void {
     if (!this.running) return;
-    this.opts.onTick(this.tick);
+    try {
+      this.opts.onTick(this.tick);
+    } catch (err) {
+      if (this.opts.onError) {
+        this.opts.onError(err, this.tick);
+      } else {
+        console.error(`TickScheduler: onTick ném exception tại tick ${this.tick}`, err);
+      }
+    }
     this.tick += 1;
     this.expectedNext += this.opts.stepMs;
     const { delayMs, resyncTo } = nextTickDelay(
@@ -91,6 +105,7 @@ export class TickScheduler {
       this.maxCatchupSteps,
     );
     if (resyncTo !== undefined) this.expectedNext = resyncTo;
+    if (!this.running) return; // onTick có thể đã gọi stop() — không schedule thêm
     this.schedule(delayMs);
   }
 }

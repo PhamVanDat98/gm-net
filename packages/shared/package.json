@@ -10,5 +10,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
+  },
+  "dependencies": {
+    "@gm-net/core": "workspace:*"
   }
 }

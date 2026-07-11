@@ -43,7 +43,7 @@ export interface Snapshot {
   serverTick: number;
   /** Ack seq cao nhất đã xử lý cho riêng client nhận (ghi lúc gửi từng client). */
   lastProcessedSeq: number;
-  /** Đếm input muộn gần đây (u8) — nuôi adaptive input lead phía client. */
+  /** Số input muộn kể từ snapshot trước (u8) — nuôi adaptive input lead phía client. */
   lateInputs: number;
   entities: SnapshotEntity[];
 }

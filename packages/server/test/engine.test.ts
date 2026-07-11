@@ -82,13 +82,16 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     expect(me.posX).toBeCloseTo(2, 2);
   });
 
-  it('lateInputs nổi lên trong snapshot (nuôi adaptive lead)', () => {
+  it('lateInputs nổi lên trong snapshot theo cửa sổ: delta kể từ snapshot trước', () => {
     const engine = newEngine();
     engine.addClient('A');
     for (let i = 0; i < 3; i++) engine.advance(); // serverTick = 3
     engine.ingestInput('A', inputBytes(1, 0, { dx: 1, dy: 0 })); // tick 0 đã qua → muộn
     const snap = wire.decodeSnapshot(engine.encodeSnapshotFor('A'));
-    expect(snap.lateInputs).toBeGreaterThanOrEqual(1);
+    expect(snap.lateInputs).toBe(1);
+    // Snapshot kế không còn input muộn mới → 0, không tích lũy bão hòa u8.
+    const next = wire.decodeSnapshot(engine.encodeSnapshotFor('A'));
+    expect(next.lateInputs).toBe(0);
   });
 
   it('removeClient despawn entity (client còn lại không thấy nữa)', () => {
@@ -100,6 +103,8 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
 
     engine.removeClient('A');
     expect(engine.clientCount).toBe(1);
+    expect(engine.hasClient('A')).toBe(false); // room dùng guard này trong tick loop
+    expect(engine.hasClient('B')).toBe(true);
     const snapB = wire.decodeSnapshot(engine.encodeSnapshotFor('B'));
     expect(snapB.entities.some((e) => e.entityId === a)).toBe(false);
     expect(snapB.entities.length).toBe(1);

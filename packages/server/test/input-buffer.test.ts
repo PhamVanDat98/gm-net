@@ -54,7 +54,7 @@ describe('InputBuffer', () => {
   });
 
   it('redundancy: mất 1 packet không mất input, trùng bị dedupe', () => {
-    const b = new InputBuffer<P>(opts);
+    const b = new InputBuffer<P>({ maxTickSkew: 30, budgetPerTick: 10 });
     // Packet 1 (seq 1..3) MẤT. Packet 2 mang lại seq 2,3,4 (redundancy).
     b.ingest(packet(4, [
       { tick: 2, v: 20 },
@@ -83,17 +83,62 @@ describe('InputBuffer', () => {
     expect(b.pendingCount).toBe(1);
   });
 
-  it('flood: quá ngân sách input mới/tick bị drop + đếm', () => {
+  it('flood: quá ngân sách input mới/tick → hoãn phần còn lại + đếm', () => {
     const b = new InputBuffer<P>({ maxTickSkew: 30, budgetPerTick: 2 });
     b.ingest(packet(5, [
-      { tick: 1, v: 1 },
-      { tick: 2, v: 2 },
       { tick: 3, v: 3 },
       { tick: 4, v: 4 },
       { tick: 5, v: 5 },
+      { tick: 6, v: 6 },
+      { tick: 7, v: 7 },
     ]), 3);
-    expect(b.stats.droppedFlood).toBe(3); // chỉ 2 được nhận
+    expect(b.stats.droppedFlood).toBe(3); // chỉ 2 được nhận tick này
     expect(b.pendingCount).toBe(2);
+  });
+
+  it('flood không mất input: phần bị hoãn được nhận lại từ redundancy sau khi budget reset', () => {
+    const b = new InputBuffer<P>({ maxTickSkew: 30, budgetPerTick: 2 });
+    // Burst phục hồi sau mất gói: 5 input mới (seq 1..5) đến cùng lúc tại tick 10.
+    b.ingest(packet(5, [
+      { tick: 10, v: 10 },
+      { tick: 11, v: 11 },
+      { tick: 12, v: 12 },
+      { tick: 13, v: 13 },
+      { tick: 14, v: 14 },
+    ]), 10);
+    expect(b.pendingCount).toBe(2); // seq 1,2 nhận; 3..5 hoãn, KHÔNG đánh dấu đã thấy
+
+    // Packet kế (seq 2..6, redundancy 5) tới ở tick 11 — budget đã reset.
+    b.ingest(packet(6, [
+      { tick: 11, v: 11 },
+      { tick: 12, v: 12 },
+      { tick: 13, v: 13 },
+      { tick: 14, v: 14 },
+      { tick: 15, v: 15 },
+    ]), 11);
+    expect(b.stats.duplicates).toBe(1); // chỉ seq 2 là trùng thật
+    expect(b.pendingCount).toBe(4); // + seq 3,4 (seq 5,6 hoãn tiếp)
+
+    // Backlog rút dần mỗi tick (budget 2 > tốc độ input 1/tick) tới khi sạch.
+    b.ingest(packet(7, [
+      { tick: 12, v: 12 },
+      { tick: 13, v: 13 },
+      { tick: 14, v: 14 },
+      { tick: 15, v: 15 },
+      { tick: 16, v: 16 },
+    ]), 12); // nhận seq 5,6 (tick 14,15); seq 7 hoãn
+    b.ingest(packet(8, [
+      { tick: 13, v: 13 },
+      { tick: 14, v: 14 },
+      { tick: 15, v: 15 },
+      { tick: 16, v: 16 },
+      { tick: 17, v: 17 },
+    ]), 13); // nhận nốt seq 7,8 (tick 16,17)
+
+    // Mọi tick 10..17 đều rút được — không input nào mất vĩnh viễn.
+    for (let t = 10; t <= 17; t++) {
+      expect(b.take(t, false)?.payload?.v).toBe(t);
+    }
   });
 
   it('ngân sách reset khi tick server tiến', () => {
@@ -110,7 +155,30 @@ describe('InputBuffer', () => {
     const b = new InputBuffer<P>(opts);
     b.ingest(packet(1, [{ tick: 2, v: 1 }]), 5); // tick 2 < serverTick 5 → muộn
     expect(b.lateInputs).toBe(1);
+    expect(b.pendingCount).toBe(0); // muộn không vào pending (không bao giờ rút được)
     b.ingest(packet(2, [{ tick: 6, v: 2 }]), 5); // đúng giờ
     expect(b.lateInputs).toBe(1);
+  });
+
+  it('input muộn không ăn budget của input tươi trong cùng packet', () => {
+    const b = new InputBuffer<P>({ maxTickSkew: 30, budgetPerTick: 1 });
+    b.ingest(packet(3, [
+      { tick: 3, v: 3 }, // muộn
+      { tick: 4, v: 4 }, // muộn
+      { tick: 6, v: 6 }, // tươi — vẫn còn budget
+    ]), 5);
+    expect(b.lateInputs).toBe(2);
+    expect(b.take(6, false)?.payload?.v).toBe(6);
+  });
+
+  it('consumeLateInputs: đọc theo cửa sổ rồi reset (không tích lũy trọn đời)', () => {
+    const b = new InputBuffer<P>(opts);
+    b.ingest(packet(1, [{ tick: 1, v: 1 }]), 5); // muộn
+    b.ingest(packet(2, [{ tick: 2, v: 2 }]), 5); // muộn
+    expect(b.consumeLateInputs()).toBe(2);
+    expect(b.consumeLateInputs()).toBe(0); // đã reset — snapshot sau báo 0
+    b.ingest(packet(3, [{ tick: 3, v: 3 }]), 6); // muộn tiếp
+    expect(b.consumeLateInputs()).toBe(1);
+    expect(b.lateInputs).toBe(3); // tổng trọn đời cho metrics vẫn giữ
   });
 });

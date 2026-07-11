@@ -7,6 +7,9 @@
  * applyInput, chưa physics). Rapier world thay vào ở M4.
  */
 import type { CustomCodec, SnapshotEntity, WorldBounds } from '@gm-net/core';
+import type { Handshake } from '@gm-net/shared';
+
+export type { Handshake };
 
 /** Cấu hình một loại room (dữ liệu thuần, truyền vào `onCreate`). */
 export interface GameConfig {
@@ -50,15 +53,6 @@ export interface GameLogic<World = unknown, Input = unknown> {
   simulate(world: World, stepMs: number, tick: number): void;
   /** Đọc state hiện tại thành danh sách entity cho snapshot. */
   readEntities(world: World): SnapshotEntity[];
-}
-
-/** Thông tin handshake JSON gửi cho client lúc join ([006] §1). */
-export interface Handshake {
-  protocolVersion: number;
-  tickRate: number;
-  worldBounds: WorldBounds;
-  /** Entity mà client này điều khiển. */
-  entityId: number;
 }
 
 /** Cặp codec serialization do game đăng ký, tách khỏi logic mô phỏng. */

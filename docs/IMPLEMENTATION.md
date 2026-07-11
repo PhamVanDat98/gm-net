@@ -213,7 +213,7 @@ và đánh dấu tại đây khi nghiệm thu:
 - [x] M0 — Scaffold + spike Rapier + FixedTimestep (commit `67b5636`)
 - [x] M1 — Protocol & serialization (`@gm-net/core`: BitWriter/BitReader, quantize, ProtocolCodec 4 message + custom codec)
 - [x] M2 — Server skeleton (`@gm-net/server`: RoomEngine echo + InputBuffer jitter + TickScheduler drift-corrected + GameRoom/createGameServer)
-- [ ] M3 — Client runtime skeleton
+- [x] M3 — Client runtime skeleton (`@gm-net/client`: GameClient transport-agnostic + ClockSync + InputPipeline redundancy/adaptive lead + SnapshotReceiver; adapter colyseus.js; nghiệm thu qua loopback in-memory)
 - [ ] M4 — Prediction + reconciliation
 - [ ] M5 — Demo 2D + nghiệm thu Phase 1 ⭐
 - [ ] M6 — Benchmark snapshot

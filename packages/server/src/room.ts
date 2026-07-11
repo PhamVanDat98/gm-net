@@ -42,6 +42,10 @@ export class GameRoom extends Room {
     this.scheduler = new TickScheduler({
       stepMs: this.engine.stepMs,
       onTick: () => this.step(),
+      // Lỗi từ game logic/encode không được giết tick loop hay sập process.
+      onError: (err, tick) => {
+        console.error(`GameRoom ${this.roomId}: lỗi trong tick ${tick}`, err);
+      },
     });
     this.scheduler.start();
   }
@@ -50,6 +54,10 @@ export class GameRoom extends Room {
   private step(): void {
     this.engine.advance();
     for (const client of this.clients) {
+      // Colyseus đưa client vào this.clients trước khi onJoin chạy — nếu tick
+      // chen giữa (tùy version có await xen kẽ), client chưa có record trong
+      // engine: bỏ qua, snapshot đầu tiên sẽ gửi trong onJoin.
+      if (!this.engine.hasClient(client.sessionId)) continue;
       client.sendBytes(MessageType.Snapshot, this.engine.encodeSnapshotFor(client.sessionId));
     }
   }

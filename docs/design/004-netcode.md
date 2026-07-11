@@ -79,6 +79,19 @@ retransmit — mất 1 packet không sao, packet sau mang lại input đó. Serv
   có hysteresis) — cân bằng giữa input delay và độ ổn định. Khởi điểm:
   `inputLead = ceil(RTT/2 / TICK_MS) + 1`.
 
+**Ghi chú triển khai M3** ([ĐỀ XUẤT] đã cụ thể hóa):
+
+- `lateInputs` trong snapshot là **đếm theo cửa sổ** (server reset mỗi lần đọc,
+  `InputBuffer.consumeLateInputs`), không phải tổng trọn đời — mỗi snapshot mang
+  đúng "số muộn kể từ snapshot trước" nên client dùng thẳng làm delta cho adaptive
+  lead, và u8 không bão hòa sau ~255 lần muộn.
+- **Redundancy chống flood:** khi server hết `budgetPerTick`, phần còn lại của packet
+  bị **hoãn** (không đánh dấu seq đã thấy) thay vì bỏ hẳn — burst input sau mất gói
+  được redundancy của packet kế mang lại khi budget reset (`InputBuffer` §2–3).
+- **Seq client bắt đầu từ 1** (không phải 0): server ack `lastProcessedSeq = 0` vừa
+  nghĩa "chưa xử lý gì" vừa nghĩa "đã xử lý seq 0"; bắt đầu từ 1 để ack 0 không cắt
+  nhầm input đầu tiên khỏi `pendingInputs`.
+
 ## 5. Prediction + Reconciliation (local player)
 
 **[CHỐT]** Cơ chế: client dự đoán bằng chính simulation code trong `shared`; khi snapshot
@@ -148,6 +161,15 @@ Ghi chú quan trọng:
 | S→C | `PONG` | clientTime echo, serverTick, serverTimeInTick |
 
 Join/leave/reservation đi qua kênh Colyseus có sẵn (JSON, tần suất thấp — không cần tối ưu).
+
+**Kiến trúc client M3** ([ĐỀ XUẤT]): `@gm-net/client` tách **runtime khỏi transport**
+(`GameClient` nói qua interface `ClientTransport`, không import Colyseus/DOM) — cùng triết
+lý `RoomEngine`↔`GameRoom` phía server, để test netcode bằng transport giả (loopback
+in-memory) không cần socket. `colyseusTransport()` là adapter mỏng duy nhất biết colyseus.js.
+Nghiệm thu M3 chạy ở tầng loopback (giống M2 chốt "2 client echo" ở tầng `RoomEngine`);
+e2e socket thật để dành M5. **Lưu ý version:** server `colyseus` 0.17, client `colyseus.js`
+mới nhất còn 0.16 — join + `onMessage`/`sendBytes` ổn định, nhưng ghim lại theo bản khớp
+khi làm e2e M5 nếu lệch protocol.
 
 ## 8. Metrics tối thiểu phải đo từ Phase 1
 
