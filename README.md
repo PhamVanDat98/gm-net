@@ -3,7 +3,9 @@
 Multiplayer framework cho game JS 2D & 3D: server-authoritative physics (Rapier),
 client-side prediction, server reconciliation, snapshot interpolation. Render-agnostic.
 
-Xem [BRAINSTORM.md](./BRAINSTORM.md) cho kiến trúc đầy đủ, tech stack và roadmap theo phase.
+Xem [BRAINSTORM.md](./BRAINSTORM.md) (tài liệu khởi tạo — nguồn sự thật gốc) và
+[docs/](./docs/README.md) (bộ design docs chi tiết 001–008: kiến trúc, netcode,
+serialization, server/rooms, matchmaker, roadmap).
 
 ## Cấu trúc
 
