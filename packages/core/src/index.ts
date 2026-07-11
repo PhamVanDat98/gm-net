@@ -1,4 +1,5 @@
 export { FixedTimestep, type FixedTimestepOptions } from './fixed-timestep.js';
+export { TickRing } from './tick-ring.js';
 
 export {
   BitWriter,

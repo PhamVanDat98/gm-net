@@ -26,8 +26,8 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 |---|---|---|
 | Fixed timestep loop (server 30Hz sim, client 60Hz render) | [004](004-netcode.md) §1 | ✅ `FixedTimestep` (core) + test |
 | Input schema + input buffer (seq number) | [004](004-netcode.md) §3–4 | ✅ server `InputBuffer` (M2) + client `InputPipeline` sample/redundancy/adaptive-lead (M3) + test |
-| Client-side prediction cho local player | [004](004-netcode.md) §5 | ⬜ |
-| Server reconciliation (ring buffer snapshot ~1s, restore + replay) | [004](004-netcode.md) §5 | ⬜ (spike Rapier ✅) |
+| Client-side prediction cho local player | [004](004-netcode.md) §5 | ✅ `PredictionWorld` (M4): timeline liên tục, ring kép state+input 30 slot, box-sim Rapier chạy chung client/server |
+| Server reconciliation (ring buffer snapshot ~1s, restore + replay) | [004](004-netcode.md) §5 | ✅ `Reconciler` (M4): so quantized-vs-quantized + epsilon, restore+replay idempotent; server ring history 30 slot (`RoomEngine.snapshotAt`) |
 | Snapshot interpolation remote (~100ms) | [004](004-netcode.md) §6 | ⬜ |
 | Binary serialization + quantization | [005](005-serialization.md) | ✅ `@gm-net/core` protocol (M1) + test round-trip/golden/fuzz |
 | Clock sync + RTT, adaptive input buffer | [004](004-netcode.md) §2, §4 | ✅ client `ClockSync` (min-RTT/jitter/serverTickNow) + adaptive `inputLead` (M3) + test |
@@ -61,8 +61,10 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
    identical. (*Node đã PASS bit-perfect; nửa browser chạy khi demo-2d có trang web —
    dùng bản `-compat` nên rủi ro thấp.)
 3. 🔶 Fixed timestep loop ✅ + input sequence protocol ⬜ (chưa cần physics).
-4. ⬜ Demo tối giản: 1 box di chuyển, prediction + reconciliation hoạt động, đo
-   misprediction khi giả lập lag.
+4. 🔶 Demo tối giản: 1 box di chuyển, prediction + reconciliation hoạt động, đo
+   misprediction khi giả lập lag. (M4 ✅ ở tầng loopback headless: box Rapier + trễ
+   giả lập 0/100ms, misprediction/s = 0 khi di chuyển tự do, đúng 1 correction khi
+   server đẩy box — `packages/client/test/prediction.test.ts`. Còn lại demo web M5.)
 5. ⬜ Benchmark: snapshot size & thời gian restore với 50/200/500 bodies.
 
 ## 4. Kế hoạch benchmark (bước 5)

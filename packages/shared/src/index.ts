@@ -37,3 +37,5 @@ export interface Handshake {
   /** Entity mà client này điều khiển (local player). */
   entityId: number;
 }
+
+export type { Simulation, EntityTransform } from './simulation.js';

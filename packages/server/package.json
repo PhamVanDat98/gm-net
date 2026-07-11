@@ -15,5 +15,8 @@
     "@gm-net/core": "workspace:*",
     "@gm-net/shared": "workspace:*",
     "colyseus": "^0.17.10"
+  },
+  "devDependencies": {
+    "@gm-net/physics-2d": "workspace:*"
   }
 }

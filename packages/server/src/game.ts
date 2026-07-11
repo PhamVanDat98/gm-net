@@ -27,6 +27,11 @@ export interface GameConfig {
   maxTickSkewTicks?: number;
   /** Ngân sách input mới/tick/client chống flood (mặc định 2, [006] §3). */
   inputBudgetPerTick?: number;
+  /**
+   * Số tick giữ trong ring history snapshot ([003] quyết định 5, ~1s; mặc định 30).
+   * Chỉ có tác dụng khi `GameLogic.takeSnapshot` được cung cấp. 0 → tắt.
+   */
+  snapshotHistoryTicks?: number;
 }
 
 /** Ngữ cảnh khi một player vào room. */
@@ -53,6 +58,11 @@ export interface GameLogic<World = unknown, Input = unknown> {
   simulate(world: World, stepMs: number, tick: number): void;
   /** Đọc state hiện tại thành danh sách entity cho snapshot. */
   readEntities(world: World): SnapshotEntity[];
+  /**
+   * Chụp toàn bộ state world (M4). Có → engine tự đẩy vào ring history mỗi tick
+   * (`RoomEngine.snapshotAt`), nền tảng cho lag compensation (M10) và debug.
+   */
+  takeSnapshot?(world: World): unknown;
 }
 
 /** Cặp codec serialization do game đăng ký, tách khỏi logic mô phỏng. */

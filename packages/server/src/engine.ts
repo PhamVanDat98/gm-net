@@ -7,6 +7,7 @@
 import {
   PROTOCOL_VERSION,
   ProtocolCodec,
+  TickRing,
   type PingMessage,
   type QuantizationConfig,
 } from '@gm-net/core';
@@ -37,6 +38,8 @@ export class RoomEngine<World = unknown, Input = unknown> {
   private readonly repeatLast: boolean;
   private readonly maxTickSkew: number;
   private readonly budgetPerTick: number;
+  /** Ring history snapshot ([003] quyết định 5) — chỉ khi game có takeSnapshot. */
+  private readonly history?: TickRing<unknown>;
   private _tick = 0;
 
   constructor(opts: RoomEngineOptions<World, Input>) {
@@ -58,6 +61,12 @@ export class RoomEngine<World = unknown, Input = unknown> {
       entityCodecs: opts.entityCodecs,
     });
     this.world = opts.game.createWorld(opts.config);
+
+    const historyTicks = opts.config.snapshotHistoryTicks ?? 30;
+    if (opts.game.takeSnapshot && historyTicks > 0) {
+      this.history = new TickRing<unknown>(historyTicks);
+      this.history.set(0, opts.game.takeSnapshot(this.world));
+    }
   }
 
   /** Số tick đã mô phỏng (cũng là serverTick của state hiện tại). */
@@ -119,6 +128,17 @@ export class RoomEngine<World = unknown, Input = unknown> {
     }
     this.game.simulate(this.world, this.stepMs, t);
     this._tick = t + 1;
+    // Slot tick = state SAU KHI mô phỏng xong tick t (cùng semantics serverTick
+    // trong snapshot gửi client).
+    this.history?.set(this._tick, this.game.takeSnapshot!(this.world));
+  }
+
+  /**
+   * Snapshot world tại `tick` từ ring history (M4; lag compensation M10 dùng).
+   * `undefined` khi ngoài ring / game không có `takeSnapshot`.
+   */
+  snapshotAt(tick: number): unknown {
+    return this.history?.get(tick);
   }
 
   /** Client này đã có record trong engine chưa (room dùng để guard tick loop). */

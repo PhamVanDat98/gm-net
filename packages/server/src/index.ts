@@ -50,6 +50,7 @@ export {
   type TakeResult,
 } from './input-buffer.js';
 export { TickScheduler, nextTickDelay, type TickSchedulerOptions } from './tick.js';
+export { createSimulationGame, type SimulationGameOptions } from './simulation-game.js';
 export type {
   GameLogic,
   GameConfig,

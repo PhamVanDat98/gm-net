@@ -132,6 +132,33 @@ Ghi chú quan trọng:
 - **Đo misprediction** ngay từ demo đầu (bước 4 tuần đầu): đếm correction/s và biên độ
   lệch — đây là chỉ số sức khỏe chính của netcode.
 
+**Ghi chú triển khai M4** ([ĐỀ XUẤT] đã cụ thể hóa):
+
+- **Timeline dự đoán liên tục** (`PredictionWorld.nextInputTick`): local sim tick +1 mỗi
+  bước và input nhắm đúng tick đó; KHÔNG suy target tick lại từ clock mỗi tick — ước
+  lượng `serverTickNow` có jitter dưới-tick nên `ceil` bounce làm tick lặp/nhảy, server
+  áp input lệch tick với local → misprediction hệ thống (đo được ~114 correction/120
+  tick với input biến thiên). Clock chỉ dùng để neo lần đầu và nhảy tới khi lệch thật
+  (≥ 2 tick: sau pause, lead tăng dồn); clock đòi tick nhỏ hơn → giữ timeline (input
+  đến sớm hơn cần, vô hại).
+- **Ring kép cùng khóa tick**: `stateRing[t]` = snapshot + transform local *tại tick t*
+  (cùng semantics `serverTick`); `inputRing[t]` = payload đã áp *tại tick t* (kể cả
+  fill repeat-last khi có gap — mirror hành vi server). Replay khi correction đọc lại
+  `inputRing` nên tự tái lập cả các tick fill → idempotent bit-perfect khi không có sự
+  kiện server mới (test kịch bản c).
+- **Neo/re-base**: snapshot có `serverTick ≥ stateTick` (snapshot đầu, warmup, tab
+  pause) → không có prediction để so, ghi đè toàn bộ theo authoritative + reset ring.
+- **Epsilon theo bước lượng tử** per miền (position/velocity/rotation, mặc định 1/1/2
+  bước): hấp thụ trọn sai số làm tròn hai phía. Khi correction, chỉ ghi đè entity thật
+  sự lệch (>0 bước) — entity đã khớp giữ nguyên float gốc + sleep state để restore+replay
+  thuần còn bit-perfect.
+- **Input canonical**: payload áp local phải là bản round-trip qua codec (vd
+  `canonicalBoxInput`) — server chỉ thấy bản decode từ wire, áp bản thô là tự tạo
+  misprediction trôi dần.
+- Demo box (`@gm-net/shared/box-sim`, subpath export để không kéo WASM vào bundle game
+  thật): top-down không trọng lực, `setLinvel` theo input, `lockRotations` vì wire chưa
+  mang angular velocity.
+
 ## 6. Snapshot interpolation (remote entities)
 
 **[CHỐT]** Remote entities render trễ ~100ms bằng nội suy giữa snapshot.

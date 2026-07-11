@@ -44,6 +44,10 @@ importers:
       colyseus.js:
         specifier: ^0.16.22
         version: 0.16.22
+    devDependencies:
+      '@gm-net/physics-2d':
+        specifier: workspace:*
+        version: link:../physics-2d
 
   packages/core: {}
 
@@ -75,12 +79,19 @@ importers:
       colyseus:
         specifier: ^0.17.10
         version: 0.17.10(@colyseus/auth@0.17.9(@colyseus/core@0.17.44)(express@5.2.1))(@colyseus/better-call@1.3.3)(@colyseus/core@0.17.44)(@colyseus/redis-driver@0.17.7(@colyseus/better-call@1.3.3)(@colyseus/schema@4.0.27(typescript@5.9.3))(@colyseus/ws-transport@0.17.13)(@pm2/io@6.1.0)(express@5.2.1))(@colyseus/redis-presence@0.17.7(@colyseus/better-call@1.3.3)(@colyseus/schema@4.0.27(typescript@5.9.3))(@colyseus/ws-transport@0.17.13)(@pm2/io@6.1.0)(express@5.2.1))(@colyseus/schema@4.0.27(typescript@5.9.3))(@colyseus/uwebsockets-transport@0.17.20(@colyseus/core@0.17.44))(@colyseus/ws-transport@0.17.13)(@pm2/io@6.1.0)(express@5.2.1)(vite@8.1.4(@types/node@26.1.1)(esbuild@0.27.7))
+    devDependencies:
+      '@gm-net/physics-2d':
+        specifier: workspace:*
+        version: link:../physics-2d
 
   packages/shared:
     dependencies:
       '@gm-net/core':
         specifier: workspace:*
         version: link:../core
+      '@gm-net/physics-2d':
+        specifier: workspace:*
+        version: link:../physics-2d
 
 packages:
 

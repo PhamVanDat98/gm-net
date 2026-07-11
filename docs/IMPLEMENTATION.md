@@ -214,7 +214,7 @@ và đánh dấu tại đây khi nghiệm thu:
 - [x] M1 — Protocol & serialization (`@gm-net/core`: BitWriter/BitReader, quantize, ProtocolCodec 4 message + custom codec)
 - [x] M2 — Server skeleton (`@gm-net/server`: RoomEngine echo + InputBuffer jitter + TickScheduler drift-corrected + GameRoom/createGameServer)
 - [x] M3 — Client runtime skeleton (`@gm-net/client`: GameClient transport-agnostic + ClockSync + InputPipeline redundancy/adaptive lead + SnapshotReceiver; adapter colyseus.js; nghiệm thu qua loopback in-memory)
-- [ ] M4 — Prediction + reconciliation
+- [x] M4 — Prediction + reconciliation (`shared`: interface `Simulation` + demo `box-sim` Rapier subpath export; `server`: `createSimulationGame` + ring history 30 slot; `client`: `PredictionWorld` timeline liên tục + `Reconciler` quantized-epsilon + `TransformSmoother` + `PredictionMetrics`; nghiệm thu loopback RTT ~0: misprediction/s = 0, đẩy box → đúng 1 correction, replay idempotent bit-perfect)
 - [ ] M5 — Demo 2D + nghiệm thu Phase 1 ⭐
 - [ ] M6 — Benchmark snapshot
 - [ ] M7–M11 — Phase 2

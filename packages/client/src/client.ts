@@ -157,11 +157,12 @@ export class GameClient<Input = unknown> {
   }
 
   /**
-   * Lấy mẫu + gửi một input, nhắm `targetTick(now)`. Trả `seq`/`tick` đã gán
-   * (M4 map seq→tick vào ring snapshot local). Kèm redundancy N input chưa ack.
+   * Lấy mẫu + gửi một input, nhắm `tick` (mặc định `targetTick(now)`; M4 truyền
+   * `PredictionWorld.nextInputTick(...)` để giữ timeline dự đoán liên tục). Trả
+   * `seq`/`tick` đã gán (map seq→tick vào ring local). Kèm redundancy N input
+   * chưa ack.
    */
-  sendInput(payload: Input, now = this.now()): { seq: number; tick: number } {
-    const tick = this.targetTick(now);
+  sendInput(payload: Input, now = this.now(), tick = this.targetTick(now)): { seq: number; tick: number } {
     const ackTick = Math.max(0, this.snapshots.latestTick); // -1 (chưa có) → 0 trên wire (u32)
     const sampled = this.pipeline.sample(payload, tick, ackTick);
     this.transport.sendBytes(MessageType.Input, this.codec.encodeInput(sampled.packet));
