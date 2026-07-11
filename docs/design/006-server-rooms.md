@@ -22,15 +22,22 @@ reservation**, bypass hoàn toàn schema sync; dữ liệu game đi qua `sendByt
 - Transport: `@colyseus/uwebsockets-transport` (uWebSockets.js — nhanh hơn `ws` nhiều lần,
   expose trực tiếp, không proxy qua Cloudflare). Đây là chỗ duy nhất đụng uWS; phần còn
   lại của server code không biết transport là gì.
+  - **Trạng thái M2 [ĐỀ XUẤT]**: `createGameServer({ transport })` nhận transport
+    injectable, **mặc định `WebSocketTransport`** (bundled trong `colyseus`, chạy mọi nơi
+    kể cả Windows/CI). uWS là opt-in production (truyền vào) — đúng điểm thoát ở bảng rủi
+    ro. Interface không đổi khi chuyển transport.
 
 ## 2. Tick loop phía server
 
 **[CHỐT]** fixed-tick 30Hz. **[ĐỀ XUẤT]** hiện thực:
 
-- Dùng `FixedTimestep` (core) + timer drift-corrected: `setTimeout` tự căn lại theo
-  `expectedNext - now` thay vì `setInterval` (setInterval trôi và dồn cục khi event loop
-  nghẽn). Colyseus có `this.setSimulationInterval(cb)` — kiểm tra khi code; nếu nó chỉ là
-  setInterval thường thì tự quản timer.
+- Dùng timer drift-corrected: `setTimeout` tự căn lại theo `expectedNext - now` thay vì
+  `setInterval` (setInterval trôi và dồn cục khi event loop nghẽn).
+  - **Kết luận M2**: `Room.setSimulationInterval` chạy trên `ClockTimer` kiểu setInterval
+    (bù delta chứ không căn thời điểm fire) → **tự quản timer** trong `TickScheduler`
+    (`server/src/tick.ts`), timer injectable để unit-test bằng đồng hồ ảo (đo 100 tick,
+    drift < 1 tick). Nghiệm thu "echo simulation, 2 client thấy nhau" test ở tầng
+    `RoomEngine` (tách khỏi socket); e2e qua socket + proxy để dành M5.
 - Một tick T:
   1. Rút input `tick == T` từ jitter buffer per-client ([004](004-netcode.md) §4);
      client thiếu input → lặp input cuối (config).

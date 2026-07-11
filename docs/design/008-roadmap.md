@@ -25,7 +25,7 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 | Hạng mục | Thiết kế | Trạng thái |
 |---|---|---|
 | Fixed timestep loop (server 30Hz sim, client 60Hz render) | [004](004-netcode.md) §1 | ✅ `FixedTimestep` (core) + test |
-| Input schema + input buffer (seq number) | [004](004-netcode.md) §3–4 | ⬜ (khung `InputCommand` đã có trong shared) |
+| Input schema + input buffer (seq number) | [004](004-netcode.md) §3–4 | ✅ server-side `InputBuffer` (M2) + test; sample/redundancy phía client là M3 |
 | Client-side prediction cho local player | [004](004-netcode.md) §5 | ⬜ |
 | Server reconciliation (ring buffer snapshot ~1s, restore + replay) | [004](004-netcode.md) §5 | ⬜ (spike Rapier ✅) |
 | Snapshot interpolation remote (~100ms) | [004](004-netcode.md) §6 | ⬜ |
