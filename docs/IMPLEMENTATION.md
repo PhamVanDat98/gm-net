@@ -224,5 +224,11 @@ và đánh dấu tại đây khi nghiệm thu:
   500 body: snapshot 353 KB, ring30 10.3 MB, restore+replay 7 tick p99 3.92 ms — lọt ngân
   sách frame 16 ms hơn 4× ⇒ **quyết định 5: giữ snapshot cả world**, ghi ở
   [003](design/003-tech-stack.md) + [008 §4](design/008-roadmap.md))
-- [ ] M7–M11 — Phase 2
+- [x] M7 — Delta compression (`core`: `DELTA` + `applySnapshotDelta` + property/golden/fuzz
+  test; `server`: ring baseline đã-gửi + `ackTick` per-client + keyframe policy + `snapshotStats`;
+  `client`: ring snapshot làm baseline + `receiveDelta`. Nghiệm thu: **140 B → 22.9 B mỗi
+  client/tick, giảm 83.6%** với 10 entity. Hai bất biến khoá bằng test hồi quy: client giữ
+  ring (ack trễ ⇒ baseline không phải bản mới nhất), và `NO_ACK_TICK` sentinel thay cho 0 —
+  xem [005 §4](design/005-serialization.md))
+- [ ] M8–M11 — Phase 2
 - [ ] M12–M14 — Phase 3

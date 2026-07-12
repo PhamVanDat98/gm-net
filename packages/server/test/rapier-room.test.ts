@@ -68,7 +68,7 @@ describe('RoomEngine + Rapier (M4)', () => {
       engine.advance();
     }
 
-    const snap = codec.decodeSnapshot(engine.encodeSnapshotFor('b'));
+    const snap = codec.decodeSnapshot(engine.encodeSnapshotFor('b').bytes);
     expect(snap.serverTick).toBe(10);
     expect(snap.entities).toHaveLength(2);
     const boxA = snap.entities.find((e) => e.entityId === a.entityId)!;
@@ -78,7 +78,7 @@ describe('RoomEngine + Rapier (M4)', () => {
     expect(boxB.posX).toBeCloseTo(0, 1);
     // Ack riêng từng client: b chưa gửi gì
     expect(snap.lastProcessedSeq).toBe(0);
-    expect(codec.decodeSnapshot(engine.encodeSnapshotFor('a')).lastProcessedSeq).toBe(10);
+    expect(codec.decodeSnapshot(engine.encodeSnapshotFor('a').bytes).lastProcessedSeq).toBe(10);
   });
 
   it('ring history: snapshotAt(tick) restore được đúng state quá khứ', () => {

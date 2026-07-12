@@ -50,7 +50,11 @@ export class GameRoom extends Room {
     this.scheduler.start();
   }
 
-  /** Một tick: mô phỏng rồi broadcast snapshot (ack riêng từng client). */
+  /**
+   * Một tick: mô phỏng rồi gửi state cho từng client — DELTA so với baseline
+   * client đã ack, hoặc SNAPSHOT (keyframe) khi chưa có baseline dùng được
+   * ([005] §4). Engine quyết định; room chỉ gửi đúng kênh.
+   */
   private step(): void {
     this.engine.advance();
     for (const client of this.clients) {
@@ -58,14 +62,17 @@ export class GameRoom extends Room {
       // chen giữa (tùy version có await xen kẽ), client chưa có record trong
       // engine: bỏ qua, snapshot đầu tiên sẽ gửi trong onJoin.
       if (!this.engine.hasClient(client.sessionId)) continue;
-      client.sendBytes(MessageType.Snapshot, this.engine.encodeSnapshotFor(client.sessionId));
+      const state = this.engine.encodeSnapshotFor(client.sessionId);
+      client.sendBytes(state.type, state.bytes);
     }
   }
 
   onJoin(client: Client): void {
     const { handshake } = this.engine.addClient(client.sessionId);
     client.send('handshake', handshake); // handshake JSON
-    client.sendBytes(MessageType.Snapshot, this.engine.encodeSnapshotFor(client.sessionId)); // full snapshot đầu tiên
+    // Chưa ack gì → engine trả keyframe (full snapshot đầu tiên).
+    const state = this.engine.encodeSnapshotFor(client.sessionId);
+    client.sendBytes(state.type, state.bytes);
   }
 
   onLeave(client: Client): void {

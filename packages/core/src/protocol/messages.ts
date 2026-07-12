@@ -18,7 +18,7 @@ import {
   dequantizeVelocity,
   type QuantizationConfig,
 } from '../serialization/quantize.js';
-import { MessageType } from './constants.js';
+import { DeltaField, MessageType } from './constants.js';
 
 /** Codec do game cung cấp cho khối field gameplay (HP, ammo, anim…). */
 export interface CustomCodec<T = unknown> {
@@ -77,6 +77,35 @@ export interface PongMessage {
   serverTick: number;
 }
 
+/** Baseline để tính/áp delta: snapshot server đã gửi tại `serverTick` ([005] §4). */
+export interface SnapshotBaseline {
+  serverTick: number;
+  entities: readonly SnapshotEntity[];
+}
+
+/** Một entity trong DELTA: `mask` cho biết field nào có mặt trên dây. */
+export interface DeltaEntity<C = unknown> {
+  entityId: number;
+  /** Bitmask {@link DeltaField}. Có bit `Full` → `entity` là block đầy đủ. */
+  mask: number;
+  /**
+   * Phần đã giải mã. Với entity FULL: đủ mọi field. Với entity partial: chỉ các
+   * field ứng với bit trong `mask` là có nghĩa (các field khác lấy từ baseline).
+   */
+  entity: Partial<SnapshotEntity<C>> & { entityId: number };
+}
+
+export interface SnapshotDelta<C = unknown> {
+  serverTick: number;
+  /** Tick của baseline mà delta này dựa vào (client phải có snapshot tick đó). */
+  baselineTick: number;
+  lastProcessedSeq: number;
+  lateInputs: number;
+  /** Entity biến mất so với baseline. */
+  despawns: number[];
+  changed: DeltaEntity<C>[];
+}
+
 export interface ProtocolCodecOptions {
   quantization: QuantizationConfig;
   /** Custom state codec cho từng `entityType`. */
@@ -96,6 +125,48 @@ export class ProtocolError extends Error {
 }
 
 const MAX_INPUT_COUNT = 0xff;
+
+function bytesEqual(a: Uint8Array | undefined, b: Uint8Array | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * Dựng snapshot đầy đủ từ baseline + delta ([005] §4) — phía client.
+ * `baseline` phải là snapshot tại đúng `delta.baselineTick` (client giữ ring
+ * snapshot gần đây: ack đi kèm INPUT nên tới server trễ, baseline server chọn
+ * thường KHÔNG phải bản mới nhất của client).
+ *
+ * Entity trong delta mà baseline không có (và không phải block FULL) là dấu hiệu
+ * baseline lệch — bỏ qua entity đó; server sẽ gửi keyframe khi ack ngừng tiến.
+ */
+export function applySnapshotDelta<C = unknown>(
+  baseline: Snapshot,
+  delta: SnapshotDelta<C>,
+): Snapshot {
+  const byId = new Map<number, SnapshotEntity>();
+  for (const e of baseline.entities) byId.set(e.entityId, e);
+  for (const id of delta.despawns) byId.delete(id);
+
+  for (const c of delta.changed) {
+    if (c.mask & DeltaField.Full) {
+      byId.set(c.entityId, c.entity as SnapshotEntity);
+      continue;
+    }
+    const prev = byId.get(c.entityId);
+    if (!prev) continue;
+    byId.set(c.entityId, { ...prev, ...c.entity } as SnapshotEntity);
+  }
+
+  return {
+    serverTick: delta.serverTick,
+    lastProcessedSeq: delta.lastProcessedSeq,
+    lateInputs: delta.lateInputs,
+    entities: [...byId.values()],
+  };
+}
 
 /** Loại message ở byte đầu, không dịch chuyển con trỏ đọc. */
 export function peekMessageType(bytes: Uint8Array): number {
@@ -179,6 +250,139 @@ export class ProtocolCodec<InputPayload = unknown> {
       entities.push({ entityId, entityType, posX, posY, rot, velX, velY, custom });
     }
     return { serverTick, lastProcessedSeq, lateInputs, entities };
+  }
+
+  // --- DELTA (§4) ---
+
+  /** Field đã quantize của một entity — đơn vị so sánh của delta. */
+  private quantizeEntity(e: SnapshotEntity): {
+    posX: number;
+    posY: number;
+    rot: number;
+    velX: number;
+    velY: number;
+    custom: Uint8Array | undefined;
+  } {
+    const { world, vMax } = this.q;
+    const codec = this.entityCodecs.get(e.entityType);
+    let custom: Uint8Array | undefined;
+    if (codec) {
+      const cw = new BitWriter(32);
+      codec.encode(cw, e.custom);
+      custom = cw.toUint8Array();
+    }
+    return {
+      posX: quantizeScalar(e.posX, world.minX, world.maxX),
+      posY: quantizeScalar(e.posY, world.minY, world.maxY),
+      rot: quantizeAngle(e.rot),
+      velX: quantizeVelocity(e.velX, vMax),
+      velY: quantizeVelocity(e.velY, vMax),
+      custom,
+    };
+  }
+
+  /**
+   * DELTA so với `baseline` (snapshot server ĐÃ GỬI tại `baseline.serverTick`).
+   * So sánh trên giá trị **đã quantize** — bỏ qua field mà client sẽ dựng lại y
+   * hệt từ baseline, nên "không đổi" đúng theo nghĩa client thấy, không theo
+   * float thô.
+   *
+   * `entityType` chỉ lên dây khi entity là FULL hoặc có khối custom đổi (decoder
+   * cần type để chọn `CustomCodec`); thay đổi transform thuần không tốn byte đó.
+   */
+  encodeDelta(snap: Snapshot, baseline: SnapshotBaseline): Uint8Array {
+    const base = new Map<number, SnapshotEntity>();
+    for (const e of baseline.entities) base.set(e.entityId, e);
+
+    const despawns: number[] = [];
+    const present = new Set<number>();
+    for (const e of snap.entities) present.add(e.entityId);
+    for (const id of base.keys()) if (!present.has(id)) despawns.push(id);
+
+    // Tính trước danh sách thay đổi: writer là cursor tiến, cần count trước khi ghi.
+    const changed: Array<{ entity: SnapshotEntity; mask: number }> = [];
+    for (const e of snap.entities) {
+      const prev = base.get(e.entityId);
+      if (!prev || prev.entityType !== e.entityType) {
+        // Entity mới (hoặc đổi type → layout custom khác) → block đầy đủ.
+        changed.push({ entity: e, mask: DeltaField.Full });
+        continue;
+      }
+      const a = this.quantizeEntity(prev);
+      const b = this.quantizeEntity(e);
+      let mask = 0;
+      if (a.posX !== b.posX) mask |= DeltaField.PosX;
+      if (a.posY !== b.posY) mask |= DeltaField.PosY;
+      if (a.rot !== b.rot) mask |= DeltaField.Rot;
+      if (a.velX !== b.velX) mask |= DeltaField.VelX;
+      if (a.velY !== b.velY) mask |= DeltaField.VelY;
+      if (!bytesEqual(a.custom, b.custom)) mask |= DeltaField.Custom;
+      if (mask !== 0) changed.push({ entity: e, mask });
+    }
+
+    const { world, vMax } = this.q;
+    const w = this.newWriter();
+    w.writeU8(MessageType.Delta);
+    w.writeU32(snap.serverTick);
+    w.writeU32(baseline.serverTick);
+    w.writeU16(snap.lastProcessedSeq);
+    w.writeU8(snap.lateInputs);
+
+    w.writeU16(despawns.length);
+    for (const id of despawns) w.writeU16(id);
+
+    w.writeU16(changed.length);
+    for (const { entity: e, mask } of changed) {
+      const full = (mask & DeltaField.Full) !== 0;
+      w.writeU16(e.entityId);
+      w.writeU8(mask);
+      if (full || mask & DeltaField.Custom) w.writeU8(e.entityType);
+      if (full || mask & DeltaField.PosX) w.writeU16(quantizeScalar(e.posX, world.minX, world.maxX));
+      if (full || mask & DeltaField.PosY) w.writeU16(quantizeScalar(e.posY, world.minY, world.maxY));
+      if (full || mask & DeltaField.Rot) w.writeU16(quantizeAngle(e.rot));
+      if (full || mask & DeltaField.VelX) w.writeI16(quantizeVelocity(e.velX, vMax));
+      if (full || mask & DeltaField.VelY) w.writeI16(quantizeVelocity(e.velY, vMax));
+      if (full || mask & DeltaField.Custom) {
+        const codec = this.entityCodecs.get(e.entityType);
+        if (codec) codec.encode(w, e.custom);
+      }
+    }
+    return w.toUint8Array();
+  }
+
+  decodeDelta(bytes: Uint8Array): SnapshotDelta {
+    const { world, vMax } = this.q;
+    const r = new BitReader(bytes);
+    this.expectType(r, MessageType.Delta, 'DELTA');
+    const serverTick = r.readU32();
+    const baselineTick = r.readU32();
+    const lastProcessedSeq = r.readU16();
+    const lateInputs = r.readU8();
+
+    const despawnCount = r.readU16();
+    const despawns: number[] = [];
+    for (let i = 0; i < despawnCount; i++) despawns.push(r.readU16());
+
+    const changedCount = r.readU16();
+    const changed: DeltaEntity[] = [];
+    for (let i = 0; i < changedCount; i++) {
+      const entityId = r.readU16();
+      const mask = r.readU8();
+      const full = (mask & DeltaField.Full) !== 0;
+      const entity: Partial<SnapshotEntity> & { entityId: number } = { entityId };
+      if (full || mask & DeltaField.Custom) entity.entityType = r.readU8();
+      if (full || mask & DeltaField.PosX) entity.posX = dequantizeScalar(r.readU16(), world.minX, world.maxX);
+      if (full || mask & DeltaField.PosY) entity.posY = dequantizeScalar(r.readU16(), world.minY, world.maxY);
+      if (full || mask & DeltaField.Rot) entity.rot = dequantizeAngle(r.readU16());
+      if (full || mask & DeltaField.VelX) entity.velX = dequantizeVelocity(r.readI16(), vMax);
+      if (full || mask & DeltaField.VelY) entity.velY = dequantizeVelocity(r.readI16(), vMax);
+      if (full || mask & DeltaField.Custom) {
+        const codec = entity.entityType !== undefined ? this.entityCodecs.get(entity.entityType) : undefined;
+        if (codec) entity.custom = codec.decode(r);
+      }
+      changed.push({ entityId, mask, entity });
+    }
+    return { serverTick, baselineTick, lastProcessedSeq, lateInputs, despawns, changed };
   }
 
   // --- INPUT (§6) ---

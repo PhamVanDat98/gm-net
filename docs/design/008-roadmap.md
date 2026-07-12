@@ -34,13 +34,13 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 
 ### Phase 2 — Production features
 
-| Hạng mục | Thiết kế |
-|---|---|
-| Delta compression (baseline đã ack) | [005](005-serialization.md) §4 |
-| Lag compensation (history ~1s, rewind hit detection) | [006](006-server-rooms.md) §4 |
-| Interest management / AOI (grid/quadtree) | [006](006-server-rooms.md) §6 |
-| Reconnection + state resync (grace period) | [006](006-server-rooms.md) §5 |
-| Headless client — bot fill + load testing | [006](006-server-rooms.md) §7 |
+| Hạng mục | Thiết kế | Trạng thái |
+|---|---|---|
+| Delta compression (baseline đã ack) | [005](005-serialization.md) §4 | ✅ M7: `DELTA` bitmask field + keyframe policy; **140 B → 22.9 B mỗi client/tick (−83.6%)** với 10 entity |
+| Lag compensation (history ~1s, rewind hit detection) | [006](006-server-rooms.md) §4 | ⬜ M10 |
+| Interest management / AOI (grid/quadtree) | [006](006-server-rooms.md) §6 | ⬜ M9 |
+| Reconnection + state resync (grace period) | [006](006-server-rooms.md) §5 | ⬜ M8 |
+| Headless client — bot fill + load testing | [006](006-server-rooms.md) §7 | ⬜ M11 |
 
 ### Phase 3 — Mở rộng
 

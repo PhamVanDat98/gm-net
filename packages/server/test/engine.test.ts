@@ -31,7 +31,7 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     engine.ingestInput('A', inputBytes(0, 0, { dx: 1, dy: 0 }));
     engine.advance();
 
-    const snap = wire.decodeSnapshot(engine.encodeSnapshotFor('A'));
+    const snap = wire.decodeSnapshot(engine.encodeSnapshotFor('A').bytes);
     expect(snap.serverTick).toBe(1);
     expect(snap.lastProcessedSeq).toBe(0);
     const me = snap.entities.find((e) => e.entityId === entityId)!;
@@ -49,7 +49,7 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     engine.advance();
 
     for (const sid of ['A', 'B']) {
-      const snap = wire.decodeSnapshot(engine.encodeSnapshotFor(sid));
+      const snap = wire.decodeSnapshot(engine.encodeSnapshotFor(sid).bytes);
       expect(snap.entities.length).toBe(2);
       const ea = snap.entities.find((e) => e.entityId === a)!;
       const eb = snap.entities.find((e) => e.entityId === b)!;
@@ -66,8 +66,8 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     engine.ingestInput('A', inputBytes(5, 0, { dx: 1, dy: 0 }));
     engine.ingestInput('B', inputBytes(9, 0, { dx: 1, dy: 0 }));
     engine.advance();
-    expect(wire.decodeSnapshot(engine.encodeSnapshotFor('A')).lastProcessedSeq).toBe(5);
-    expect(wire.decodeSnapshot(engine.encodeSnapshotFor('B')).lastProcessedSeq).toBe(9);
+    expect(wire.decodeSnapshot(engine.encodeSnapshotFor('A').bytes).lastProcessedSeq).toBe(5);
+    expect(wire.decodeSnapshot(engine.encodeSnapshotFor('B').bytes).lastProcessedSeq).toBe(9);
   });
 
   it('repeat-last: tick không có input mới thì lặp input cuối', () => {
@@ -77,7 +77,7 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     engine.advance(); // tick 0: x = 1
     engine.advance(); // tick 1: không input mới → lặp dx=1 → x = 2
     const me = wire
-      .decodeSnapshot(engine.encodeSnapshotFor('A'))
+      .decodeSnapshot(engine.encodeSnapshotFor('A').bytes)
       .entities.find((e) => e.entityId === entityId)!;
     expect(me.posX).toBeCloseTo(2, 2);
   });
@@ -87,10 +87,10 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     engine.addClient('A');
     for (let i = 0; i < 3; i++) engine.advance(); // serverTick = 3
     engine.ingestInput('A', inputBytes(1, 0, { dx: 1, dy: 0 })); // tick 0 đã qua → muộn
-    const snap = wire.decodeSnapshot(engine.encodeSnapshotFor('A'));
+    const snap = wire.decodeSnapshot(engine.encodeSnapshotFor('A').bytes);
     expect(snap.lateInputs).toBe(1);
     // Snapshot kế không còn input muộn mới → 0, không tích lũy bão hòa u8.
-    const next = wire.decodeSnapshot(engine.encodeSnapshotFor('A'));
+    const next = wire.decodeSnapshot(engine.encodeSnapshotFor('A').bytes);
     expect(next.lateInputs).toBe(0);
   });
 
@@ -105,7 +105,7 @@ describe('RoomEngine — echo simulation (nghiệm thu M2)', () => {
     expect(engine.clientCount).toBe(1);
     expect(engine.hasClient('A')).toBe(false); // room dùng guard này trong tick loop
     expect(engine.hasClient('B')).toBe(true);
-    const snapB = wire.decodeSnapshot(engine.encodeSnapshotFor('B'));
+    const snapB = wire.decodeSnapshot(engine.encodeSnapshotFor('B').bytes);
     expect(snapB.entities.some((e) => e.entityId === a)).toBe(false);
     expect(snapB.entities.length).toBe(1);
     // Client đã rời không còn encode được.

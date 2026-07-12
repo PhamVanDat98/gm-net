@@ -10,6 +10,7 @@
  */
 import {
   MessageType,
+  NO_ACK_TICK,
   ProtocolError,
   type ProtocolCodec,
   type Snapshot,
@@ -17,7 +18,7 @@ import {
 import { SERVER_TICK_MS, type Handshake } from '@gm-net/shared';
 import { ClockSync, type ClockSyncOptions } from './clock.js';
 import { InputPipeline, InputLeadController, type InputPipelineOptions, type InputLeadOptions } from './input.js';
-import { SnapshotReceiver, type SnapshotListener } from './snapshot.js';
+import { SnapshotReceiver, type SnapshotListener, type SnapshotReceiverStats } from './snapshot.js';
 import type { ClientTransport } from './transport.js';
 
 export interface GameClientOptions<Input> {
@@ -118,6 +119,11 @@ export class GameClient<Input = unknown> {
     return this.snapshots.onSnapshot(cb);
   }
 
+  /** Delta/keyframe đã nhận ([005] §4) — HUD/debug/test. */
+  snapshotStats(): SnapshotReceiverStats {
+    return this.snapshots.snapshotStats();
+  }
+
   /** Input chưa ack (M4 replay reconciliation). */
   unackedInputs(): ReadonlyArray<{ seq: number; tick: number; payload: Input }> {
     return this.pipeline.unacked();
@@ -163,7 +169,10 @@ export class GameClient<Input = unknown> {
    * chưa ack.
    */
   sendInput(payload: Input, now = this.now(), tick = this.targetTick(now)): { seq: number; tick: number } {
-    const ackTick = Math.max(0, this.snapshots.latestTick); // -1 (chưa có) → 0 trên wire (u32)
+    // Chưa nhận snapshot nào → sentinel, KHÔNG phải 0: tick 0 là tick thật, server
+    // sẽ delta dựa trên baseline mà client join giữa chừng chưa từng nhận ([005] §6).
+    const latest = this.snapshots.latestTick;
+    const ackTick = latest < 0 ? NO_ACK_TICK : latest;
     const sampled = this.pipeline.sample(payload, tick, ackTick);
     this.transport.sendBytes(MessageType.Input, this.codec.encodeInput(sampled.packet));
     return { seq: sampled.seq, tick: sampled.tick };
@@ -180,14 +189,21 @@ export class GameClient<Input = unknown> {
     this.onHandshakeCb?.(h);
   }
 
+  /** State mới (từ SNAPSHOT hoặc DELTA): ack input đã xử lý + nuôi adaptive lead. */
+  private onState(snap: Snapshot | undefined): void {
+    if (!snap) return;
+    this.pipeline.ack(snap.lastProcessedSeq);
+    this.leadCtl.onSnapshot(snap.lateInputs); // đã là "late trong cửa sổ" (server consume-on-read)
+  }
+
   private handleBytes(type: number, bytes: Uint8Array): void {
     try {
       if (type === MessageType.Snapshot) {
-        const snap = this.snapshots.receive(bytes);
-        if (snap) {
-          this.pipeline.ack(snap.lastProcessedSeq);
-          this.leadCtl.onSnapshot(snap.lateInputs); // đã là "late trong cửa sổ" (server consume-on-read)
-        }
+        this.onState(this.snapshots.receive(bytes));
+      } else if (type === MessageType.Delta) {
+        // Delta dựng lại từ baseline trong ring; không khớp → bỏ, ack đứng yên,
+        // server sẽ gửi keyframe ([005] §4).
+        this.onState(this.snapshots.receiveDelta(bytes));
       } else if (type === MessageType.Pong) {
         const pong = this.codec.decodePong(bytes);
         this.clock.onPong(pong, this.now());

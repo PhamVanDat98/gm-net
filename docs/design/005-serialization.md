@@ -53,21 +53,56 @@ entity × entityCount:
 
 Entity id: u16 do server cấp khi spawn, tái sử dụng sau khi despawn được báo hết.
 
-## 4. Delta compression (Phase 2)
+## 4. Delta compression (Phase 2 — **đã làm, M7**)
 
 **[CHỐT]** cơ chế: chỉ gửi field thay đổi **so với baseline mà client đã ack**.
 
-**[ĐỀ XUẤT]** thiết kế:
+**[ĐỀ XUẤT]** thiết kế (đã chốt khi code M7):
 
 - Client ack tick snapshot mới nhất đã nhận (đính vào packet `INPUT` — 4 byte, khỏi tốn
   message riêng). Server giữ, per client, snapshot gần nhất được ack làm **baseline**.
-- `DELTA` = so với baseline: bitmask entity thay đổi; mỗi entity thay đổi mang bitmask
-  field + chỉ các field đó. Entity mới → full block; entity biến mất → danh sách despawn id.
-- Server giữ vòng ~1s snapshot đã gửi để làm baseline (dùng chung ring buffer với lag
-  compensation nếu tiện). Baseline già hơn 1s (client ngộp/loss dài) → gửi lại **full
-  snapshot** (keyframe). Join/reconnect → luôn full snapshot đầu tiên.
+- `DELTA` = so với baseline: danh sách despawn + danh sách entity đổi; mỗi entity đổi mang
+  bitmask field + chỉ các field đó. Entity mới → block FULL.
+- Server giữ ring ~1s snapshot đã gửi để làm baseline. Baseline già hơn ring (client ngộp/
+  loss dài) → gửi lại **full snapshot** (keyframe). Join/reconnect → luôn keyframe.
 - Vì WebSocket là TCP (in-order, reliable), ack chỉ trễ chứ không mất — mô hình baseline
   đơn giản hơn nhiều so với trên UDP.
+
+```
+DELTA
+u8  messageType = DELTA
+u32 serverTick
+u32 baselineTick          ← tick baseline delta này dựa vào (client phải có snapshot đó)
+u16 lastProcessedSeq
+u8  lateInputs
+u16 despawnCount
+  u16 entityId × despawnCount
+u16 changedCount
+changed × changedCount:
+  u16 entityId
+  u8  fieldMask           ← bit0 posX, 1 posY, 2 rot, 3 velX, 4 velY, 5 custom, 7 FULL
+  [u8  entityType]        ← CHỈ khi FULL hoặc bit custom (decoder cần type để chọn codec)
+  [u16 posX] [u16 posY] [u16 rot] [i16 velX] [i16 velY]   ← chỉ field có bit
+  [custom block]          ← khi FULL hoặc bit custom
+```
+
+**So sánh trên giá trị đã quantize**, không trên float thô: "không đổi" phải đúng theo nghĩa
+*client sẽ dựng lại y hệt từ baseline*. Khối custom delta ở mức có-đổi/không-đổi (so bytes).
+
+**Hai bất biến bắt buộc** (đều là bug thật gặp khi làm M7, có test hồi quy khoá):
+
+1. **Client giữ ring snapshot gần đây, không chỉ bản mới nhất.** Ack đi kèm INPUT nên tới
+   server trễ ⇒ baseline server chọn thường KHÔNG phải snapshot mới nhất của client.
+2. **Server chỉ delta so với baseline nó đã thật sự gửi cho chính client đó**, và
+   `ackTick` "chưa có snapshot" phải là sentinel `NO_ACK_TICK = 0xFFFFFFFF` — **không dùng
+   0**: tick 0 là tick hợp lệ, server sẽ tưởng client join giữa chừng đã có tick 0 rồi delta
+   so với baseline nó chưa từng nhận → client bỏ sạch delta → buffer interpolation cạn.
+
+Delta không khớp baseline nào trong ring client → client **bỏ**, tiếp tục ack tick cũ; server
+thấy ack đứng yên/quá già sẽ gửi keyframe (tự lành).
+
+**Đo được (M7, echo game 10 entity, 60 tick):** 140 B → **22.9 B** mỗi client/tick (**giảm
+83.6%**) — `packages/server/test/delta.test.ts`.
 
 ## 5. Custom fields của game
 
@@ -85,7 +120,9 @@ Framework lo phần transform + envelope + delta bitmask ở mức field-group; 
 
 ```
 u8  messageType = INPUT
-u32 ackTick               ← snapshot tick mới nhất client đã nhận (phục vụ §4)
+u32 ackTick               ← snapshot tick mới nhất client đã nhận (phục vụ §4);
+                            0xFFFFFFFF (NO_ACK_TICK) = chưa nhận snapshot nào.
+                            KHÔNG dùng 0 cho "chưa có" — 0 là tick hợp lệ (§4)
 u16 latestSeq
 u8  count                 ← số input trong packet (redundancy 3–5)
 input × count (từ cũ → mới):

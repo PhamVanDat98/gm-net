@@ -41,7 +41,12 @@ export function createGameServer<World = unknown, Input = unknown>(
 }
 
 export { GameRoom, type GameRoomOptions } from './room.js';
-export { RoomEngine, type RoomEngineOptions } from './engine.js';
+export {
+  RoomEngine,
+  type RoomEngineOptions,
+  type EncodedState,
+  type SnapshotStats,
+} from './engine.js';
 export { seqGreater } from '@gm-net/core'; // re-export cho tương thích (chuyển về core ở M3)
 export {
   InputBuffer,

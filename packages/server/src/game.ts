@@ -32,6 +32,16 @@ export interface GameConfig {
    * Chỉ có tác dụng khi `GameLogic.takeSnapshot` được cung cấp. 0 → tắt.
    */
   snapshotHistoryTicks?: number;
+  /**
+   * Delta compression ([005] §4, M7): chỉ gửi field đổi so với baseline client đã
+   * ack. Mặc định bật. Tắt → luôn gửi full snapshot (mốc so sánh băng thông).
+   */
+  deltaCompression?: boolean;
+  /**
+   * Số tick giữ snapshot đã gửi làm baseline delta (mặc định ≈ tickRate ≈ 1s).
+   * Client ack cũ hơn ngần này → server gửi keyframe ([005] §4).
+   */
+  baselineHistoryTicks?: number;
 }
 
 /** Ngữ cảnh khi một player vào room. */

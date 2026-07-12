@@ -5,19 +5,53 @@
  * "echo simulation, 2 client thấy nhau" deterministic không cần socket.
  */
 import {
+  MessageType,
+  NO_ACK_TICK,
   PROTOCOL_VERSION,
   ProtocolCodec,
   TickRing,
   type PingMessage,
   type QuantizationConfig,
+  type Snapshot,
+  type SnapshotBaseline,
+  type SnapshotEntity,
 } from '@gm-net/core';
 import { InputBuffer } from './input-buffer.js';
 import type { GameCodecs, GameConfig, GameLogic, Handshake } from './game.js';
+
+/** Gói state đã encode cho một client: DELTA hay SNAPSHOT (keyframe). */
+export interface EncodedState {
+  bytes: Uint8Array;
+  /** `MessageType.Delta` hoặc `MessageType.Snapshot` — room gửi đúng kênh này. */
+  type: number;
+  keyframe: boolean;
+}
 
 interface ClientRecord<Input> {
   sessionId: string;
   entityId: number;
   buffer: InputBuffer<Input>;
+  /**
+   * Tick snapshot mới nhất client báo đã nhận (đính trong INPUT — [005] §6);
+   * baseline để tính delta. -1 = chưa ack gì → phải gửi keyframe.
+   */
+  ackTick: number;
+  /**
+   * Tick của snapshot ĐẦU TIÊN server gửi cho client này (-1 = chưa gửi). Client
+   * join giữa chừng không có snapshot nào trước mốc này — ack cũ hơn nó là không
+   * hợp lệ (client hỏng/độc hại) và tuyệt đối không được dùng làm baseline.
+   */
+  firstSentTick: number;
+}
+
+/** Băng thông snapshot đo được ([008] Phase 2 — nghiệm thu M7). */
+export interface SnapshotStats {
+  /** Tổng byte snapshot/delta đã encode gửi đi. */
+  bytesSent: number;
+  /** Số full snapshot (keyframe) đã gửi. */
+  keyframes: number;
+  /** Số delta đã gửi. */
+  deltas: number;
 }
 
 export interface RoomEngineOptions<World = unknown, Input = unknown> extends GameCodecs<Input> {
@@ -40,6 +74,16 @@ export class RoomEngine<World = unknown, Input = unknown> {
   private readonly budgetPerTick: number;
   /** Ring history snapshot ([003] quyết định 5) — chỉ khi game có takeSnapshot. */
   private readonly history?: TickRing<unknown>;
+  /**
+   * Ring các snapshot ĐÃ GỬI (entity list) làm baseline delta ([005] §4). Delta
+   * so trên giá trị quantize nên baseline phải đúng bản client đã nhận.
+   */
+  private readonly sentRing?: TickRing<readonly SnapshotEntity[]>;
+  private readonly deltaEnabled: boolean;
+  private readonly baselineTicks: number;
+  private readonly stats: SnapshotStats = { bytesSent: 0, keyframes: 0, deltas: 0 };
+  private entitiesCache: readonly SnapshotEntity[] | undefined;
+  private entitiesTick = -1;
   private _tick = 0;
 
   constructor(opts: RoomEngineOptions<World, Input>) {
@@ -67,6 +111,12 @@ export class RoomEngine<World = unknown, Input = unknown> {
       this.history = new TickRing<unknown>(historyTicks);
       this.history.set(0, opts.game.takeSnapshot(this.world));
     }
+
+    this.deltaEnabled = opts.config.deltaCompression ?? true;
+    this.baselineTicks = opts.config.baselineHistoryTicks ?? Math.round(opts.config.tickRate);
+    if (this.deltaEnabled && this.baselineTicks > 0) {
+      this.sentRing = new TickRing<readonly SnapshotEntity[]>(this.baselineTicks);
+    }
   }
 
   /** Số tick đã mô phỏng (cũng là serverTick của state hiện tại). */
@@ -92,6 +142,8 @@ export class RoomEngine<World = unknown, Input = unknown> {
         maxTickSkew: this.maxTickSkew,
         budgetPerTick: this.budgetPerTick,
       }),
+      ackTick: -1, // chưa nhận snapshot nào → snapshot đầu tiên là keyframe
+      firstSentTick: -1,
     });
     const handshake: Handshake = {
       protocolVersion: this.protocolVersion,
@@ -114,6 +166,9 @@ export class RoomEngine<World = unknown, Input = unknown> {
     const c = this.clients.get(sessionId);
     if (!c) return;
     const msg = this.codec.decodeInput(bytes);
+    // ackTick chỉ tiến, không lùi: packet INPUT đến sai thứ tự (jitter) không
+    // được kéo baseline về quá khứ. `NO_ACK_TICK` = client chưa có snapshot nào.
+    if (msg.ackTick !== NO_ACK_TICK && msg.ackTick > c.ackTick) c.ackTick = msg.ackTick;
     c.buffer.ingest(msg, this._tick);
   }
 
@@ -147,18 +202,73 @@ export class RoomEngine<World = unknown, Input = unknown> {
   }
 
   /**
-   * Snapshot đầy đủ cho một client (ack `lastProcessedSeq` + `lateInputs` riêng).
-   * `lateInputs` = số input muộn *kể từ snapshot trước* (consume-on-read).
+   * State gửi cho một client tại tick hiện tại: **delta** so với baseline client
+   * đã ack nếu baseline còn trong ring, ngược lại **keyframe** (full snapshot).
+   *
+   * Keyframe khi: chưa ack gì (join/reconnect), baseline già hơn ring (~1s —
+   * client ngộp/loss dài), hoặc delta tắt trong config ([005] §4).
+   *
+   * Header (`lastProcessedSeq`, `lateInputs`) riêng từng client; `lateInputs` là
+   * delta kể từ snapshot trước (consume-on-read).
    */
-  encodeSnapshotFor(sessionId: string): Uint8Array {
+  encodeSnapshotFor(sessionId: string): EncodedState {
     const c = this.clients.get(sessionId);
     if (!c) throw new Error(`RoomEngine: client không tồn tại (${sessionId})`);
-    return this.codec.encodeSnapshot({
+
+    const entities = this.currentEntities();
+    const snap: Snapshot = {
       serverTick: this._tick,
       lastProcessedSeq: c.buffer.lastProcessedSeq,
       lateInputs: Math.min(255, c.buffer.consumeLateInputs()),
-      entities: this.game.readEntities(this.world),
-    });
+      entities: entities as SnapshotEntity[],
+    };
+
+    const baseline = this.baselineFor(c);
+    const bytes = baseline
+      ? this.codec.encodeDelta(snap, baseline)
+      : this.codec.encodeSnapshot(snap);
+
+    // State tick này giờ là baseline hợp lệ cho các delta sau (client sẽ ack nó).
+    this.sentRing?.set(this._tick, entities);
+    if (c.firstSentTick < 0) c.firstSentTick = this._tick;
+
+    this.stats.bytesSent += bytes.byteLength;
+    if (baseline) this.stats.deltas++;
+    else this.stats.keyframes++;
+
+    return { bytes, type: baseline ? MessageType.Delta : MessageType.Snapshot, keyframe: !baseline };
+  }
+
+  /** Entity list của tick hiện tại, đọc một lần rồi dùng chung cho mọi client. */
+  private currentEntities(): readonly SnapshotEntity[] {
+    if (this.entitiesTick !== this._tick || !this.entitiesCache) {
+      this.entitiesCache = this.game.readEntities(this.world);
+      this.entitiesTick = this._tick;
+    }
+    return this.entitiesCache;
+  }
+
+  /**
+   * Baseline dùng được cho client này, hoặc `undefined` → phải gửi keyframe.
+   *
+   * Chỉ nhận baseline mà server **đã thật sự gửi cho chính client này**: ack cũ
+   * hơn snapshot đầu tiên nó nhận (client join giữa chừng) là baseline nó không
+   * có — delta dựa vào đó sẽ bị client bỏ hết, mất mẫu interpolation.
+   *
+   * Ngưỡng tuổi dùng `>=` (không phải `>`): ring baseline phía client cùng cỡ
+   * `baselineTicks`, nên tick ở đúng tuổi `baselineTicks` đã bị ghi đè bên đó.
+   */
+  private baselineFor(c: ClientRecord<Input>): SnapshotBaseline | undefined {
+    if (!this.sentRing || c.ackTick < 0) return undefined;
+    if (c.firstSentTick < 0 || c.ackTick < c.firstSentTick) return undefined;
+    if (this._tick - c.ackTick >= this.baselineTicks) return undefined; // baseline quá già
+    const entities = this.sentRing.get(c.ackTick);
+    return entities ? { serverTick: c.ackTick, entities } : undefined;
+  }
+
+  /** Số liệu băng thông snapshot (nghiệm thu M7). */
+  snapshotStats(): SnapshotStats {
+    return { ...this.stats };
   }
 
   decodePing(bytes: Uint8Array): PingMessage {

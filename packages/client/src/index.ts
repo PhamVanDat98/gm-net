@@ -15,7 +15,12 @@ export {
   type InputLeadOptions,
   type SampledInput,
 } from './input.js';
-export { SnapshotReceiver, type SnapshotListener } from './snapshot.js';
+export {
+  SnapshotReceiver,
+  type SnapshotListener,
+  type SnapshotReceiverOptions,
+  type SnapshotReceiverStats,
+} from './snapshot.js';
 export {
   PredictionWorld,
   type PredictionWorldOptions,
