@@ -3,6 +3,7 @@
   "include": [
     "packages/*/src/**/*.ts",
     "packages/*/test/**/*.ts",
+    "packages/*/bench/**/*.ts",
     "examples/*/src/**/*.ts",
     "examples/*/test/**/*.ts"
   ]

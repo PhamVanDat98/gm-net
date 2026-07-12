@@ -220,6 +220,9 @@ và đánh dấu tại đây khi nghiệm thu:
   delay/drop/seed; `examples/demo-2d` server + canvas 2D + HUD (kiểm chứng Rapier
   browser); e2e socket thật qua proxy 200ms RTT + 5% loss đạt ngưỡng 008 §1;
   `connectGameRoom` tự matchmake reshape reservation 0.17→0.16)
-- [ ] M6 — Benchmark snapshot
+- [x] M6 — Benchmark snapshot (`packages/physics-2d/bench/snapshot-bench.ts` + test harness;
+  500 body: snapshot 353 KB, ring30 10.3 MB, restore+replay 7 tick p99 3.92 ms — lọt ngân
+  sách frame 16 ms hơn 4× ⇒ **quyết định 5: giữ snapshot cả world**, ghi ở
+  [003](design/003-tech-stack.md) + [008 §4](design/008-roadmap.md))
 - [ ] M7–M11 — Phase 2
 - [ ] M12–M14 — Phase 3

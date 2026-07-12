@@ -87,6 +87,10 @@ importers:
       '@gm-net/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.0
 
   packages/physics-3d:
     dependencies:

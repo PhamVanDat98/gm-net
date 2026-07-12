@@ -9,10 +9,14 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean",
+    "bench": "tsx bench/snapshot-bench.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "^0.19.3",
     "@gm-net/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
   }
 }

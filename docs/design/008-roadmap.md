@@ -64,18 +64,33 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 4. ✅ Demo tối giản: box di chuyển, prediction + reconciliation, đo misprediction
    dưới lag giả lập. (M4 loopback headless + M5 demo web `examples/demo-2d` +
    e2e proxy 200ms/5% — `examples/demo-2d/test/e2e.test.ts`.)
-5. ⬜ Benchmark: snapshot size & thời gian restore với 50/200/500 bodies.
+5. ✅ Benchmark: snapshot size & thời gian restore với 50/200/500 bodies. (M6 —
+   `packages/physics-2d/bench/snapshot-bench.ts`; kết luận ở §4 và
+   [003 quyết định 5](003-tech-stack.md).)
 
-## 4. Kế hoạch benchmark (bước 5)
+## 4. Benchmark snapshot (bước 5) — **đã chạy, M6 (2026-07-12)**
 
-**[ĐỀ XUẤT]** — quyết định 5 (snapshot cả world vs thủ công) chờ số liệu này:
+Mục tiêu: chốt quyết định 5 (snapshot cả world vs thủ công).
 
-- Script Node trong `packages/physics-2d/bench/`: world 50/200/500 dynamic bodies đang
-  va chạm; đo (a) `takeSnapshot()` ms + size bytes, (b) `restoreSnapshot()` ms,
-  (c) restore + replay 7 tick (tình huống reconciliation RTT 200ms).
-- Ngưỡng quan tâm: ring buffer 30 snapshot chiếm bao nhiêu MB; restore+replay có lọt
-  trong ngân sách 1 frame client (~16ms) không. Nếu 500 bodies không lọt → kích hoạt
-  phương án "snapshot thủ công dynamic bodies quan trọng" đã lường trong quyết định 5.
+- Script: `packages/physics-2d/bench/snapshot-bench.ts` — `pnpm --filter @gm-net/physics-2d
+  bench` (mặc định 50,200,500; truyền `50,100` để đổi). World kín, N bóng dynamic
+  `canSleep=false` đang va chạm; đo (a) `takeSnapshot()` ms + bytes, (b) `restoreSnapshot()`
+  ms, (c) restore + replay 7 tick (reconciliation RTT 200ms), (d) `step()` thuần làm mốc.
+- Harness có test đi kèm (`packages/physics-2d/test/snapshot-bench.test.ts`): assert phép đo
+  hợp lệ (world thật sự có contact, snapshot lớn dần theo body, replay đắt hơn restore trần)
+  — không assert con số hiệu năng để tránh flaky trên CI.
+
+**Kết quả (Node v22.18.0, win32/x64):**
+
+| Bodies | Snapshot size | Ring 30 slot | takeSnapshot (mean) | restore (mean) | restore+replay 7 tick (p99) |
+|---|---|---|---|---|---|
+| 50 | 36.8 KB | 1.08 MB | 0.08 ms | 0.41 ms | 2.31 ms |
+| 200 | 143.0 KB | 4.19 MB | 0.15 ms | 0.27 ms | 2.80 ms |
+| 500 | 353.1 KB | 10.34 MB | 0.26 ms | 0.43 ms | 3.92 ms |
+
+**Kết luận: giữ snapshot cả world** — restore+replay p99 3.92 ms ở 500 body, lọt ngân sách
+1 frame (~16 ms) hơn 4×; takeSnapshot ~0.8% tick 33 ms. Chi phí đáng kể duy nhất là bộ nhớ
+(10.3 MB/room ở 500 body). Bảng đầy đủ + ngưỡng xem lại: [003 quyết định 5](003-tech-stack.md).
 
 ## 5. Giả lập điều kiện mạng
 

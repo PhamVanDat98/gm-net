@@ -91,6 +91,42 @@ rồi replay input; (b) lag compensation phía server — rewind khi hit detecti
 **Đã lường trước:** world lớn → cân nhắc snapshot thủ công chỉ dynamic bodies quan trọng
 thay vì cả world. Quyết định dựa trên benchmark 50/200/500 bodies ([008](008-roadmap.md) §4).
 
+### Kết luận benchmark (M6, 2026-07-12) — **giữ snapshot cả world**
+
+Bench: `packages/physics-2d/bench/snapshot-bench.ts` (`pnpm --filter @gm-net/physics-2d
+bench`). World kín (sàn + 4 tường), N quả bóng dynamic `canSleep=false` rơi chồng lên nhau
+→ contact thật sự (contact pairs ≈ N+4), warmup 90 tick, 30 mẫu sau 3 vòng warm-up bỏ.
+Node v22.18.0, win32/x64.
+
+| Bodies | Contact pairs | Snapshot size | Ring 30 slot | takeSnapshot (mean/p99) | restore (mean/p99) | restore+replay 7 tick (mean/p99) | step thuần (mean) |
+|---|---|---|---|---|---|---|---|
+| 50 | 54 | 36.8 KB | 1.08 MB | 0.08 / 0.21 ms | 0.41 / 4.86 ms | 0.79 / 2.31 ms | 0.07 ms |
+| 200 | 204 | 143.0 KB | 4.19 MB | 0.15 / 0.25 ms | 0.27 / 0.59 ms | 1.52 / 2.80 ms | 0.20 ms |
+| 500 | 504 | 353.1 KB | 10.34 MB | 0.26 / 0.35 ms | 0.43 / 0.62 ms | 2.58 / 3.92 ms | 0.35 ms |
+
+(p99 restore 4.86 ms ở hàng 50 body là nhiễu GC — mean 0.41 ms, và hàng 200/500 body nặng
+hơn lại nhanh hơn; không phải chi phí của physics.)
+
+**Quyết định: giữ nguyên ring buffer `takeSnapshot()` cả world.** Không kích hoạt phương án
+snapshot thủ công. Căn cứ:
+
+- **Đường đi nóng của reconciliation lọt ngân sách xa:** restore + replay 7 tick (≈ RTT
+  200ms @30Hz) p99 **3.92 ms** ở 500 body — dưới ngân sách 1 frame client (~16 ms) hơn 4×.
+  Ở quy mô demo/game thật (vài chục body) là **2.31 ms**.
+- **takeSnapshot mỗi tick gần như miễn phí:** 0.26 ms ở 500 body = ~0.8% của tick 33 ms, và
+  cùng bậc với chi phí `step()` thuần (0.35 ms) — snapshot không phải là thứ tốn kém, physics
+  mới là.
+- **Chi phí lớn nhất là bộ nhớ, không phải CPU:** ring 30 slot = **10.3 MB** ở 500 body
+  (≈ 700 byte/body/slot). Chấp nhận được cho client (1 world) và cho server **mỗi room**;
+  đây là con số phải nhân lên khi xếp nhiều room 500-body vào một process.
+
+**Ngưỡng xem lại (thay cho "world lớn" mơ hồ):**
+- Ring buffer vượt ~20 MB/room (≈ 1000 body @30 slot) → cân nhắc giảm ring xuống 0.5 s
+  trước, rồi mới đến snapshot thủ công.
+- restore+replay p99 chạm ~8 ms (nửa ngân sách frame) → chuyển sang snapshot thủ công dynamic
+  body quan trọng.
+- Cả hai ngưỡng đo lại bằng chính bench này khi đổi Rapier version hoặc runtime.
+
 ## Quyết định 6 — Render tách khỏi framework
 
 **Nội dung:** Core chỉ expose interpolated state (position/rotation/custom fields đã nội
