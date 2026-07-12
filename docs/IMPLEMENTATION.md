@@ -236,5 +236,10 @@ và đánh dấu tại đây khi nghiệm thu:
   `netem-proxy`: `setOffline()`. Nghiệm thu: e2e **rớt mạng 10s → nối lại, giữ entityId,
   keyframe resync, chơi tiếp** — `examples/demo-2d/test/reconnect.e2e.test.ts`. Ba bẫy API
   Colyseus 0.17 ghi ở [006 §5](design/006-server-rooms.md))
-- [ ] M9–M11 — Phase 2
+- [x] M9 — Interest management / AOI (`server/src/aoi.ts`: `InterestGrid` uniform grid +
+  hysteresis vào-r/ra-r×1.2; `GameConfig.aoi`; spawn/despawn đi thẳng trong DELTA. **Ring
+  baseline delta chuyển thành per-client** — mỗi client thấy tập entity khác nhau nên
+  baseline dùng chung theo room là sai. Nghiệm thu: entity ngoài vùng không có trong bytes;
+  qua ranh giới không flapping — xem [006 §6](design/006-server-rooms.md))
+- [ ] M10–M11 — Phase 2
 - [ ] M12–M14 — Phase 3

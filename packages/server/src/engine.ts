@@ -16,6 +16,7 @@ import {
   type SnapshotBaseline,
   type SnapshotEntity,
 } from '@gm-net/core';
+import { InterestGrid } from './aoi.js';
 import { InputBuffer } from './input-buffer.js';
 import type { GameCodecs, GameConfig, GameLogic, Handshake } from './game.js';
 
@@ -44,6 +45,14 @@ interface ClientRecord<Input> {
    * hợp lệ (client hỏng/độc hại) và tuyệt đối không được dùng làm baseline.
    */
   firstSentTick: number;
+  /**
+   * Ring snapshot ĐÃ GỬI cho riêng client này, làm baseline delta ([005] §4).
+   * Per-client (không dùng chung theo room) vì AOI (M9) khiến mỗi client thấy một
+   * tập entity khác nhau — baseline phải đúng cái nó đã nhận.
+   */
+  sentRing?: TickRing<readonly SnapshotEntity[]>;
+  /** Tập entityId client đang thấy (AOI, M9) — đầu vào của hysteresis tick sau. */
+  visible: Set<number>;
 }
 
 /** Băng thông snapshot đo được ([008] Phase 2 — nghiệm thu M7). */
@@ -76,12 +85,10 @@ export class RoomEngine<World = unknown, Input = unknown> {
   private readonly budgetPerTick: number;
   /** Ring history snapshot ([003] quyết định 5) — chỉ khi game có takeSnapshot. */
   private readonly history?: TickRing<unknown>;
-  /**
-   * Ring các snapshot ĐÃ GỬI (entity list) làm baseline delta ([005] §4). Delta
-   * so trên giá trị quantize nên baseline phải đúng bản client đã nhận.
-   */
-  private readonly sentRing?: TickRing<readonly SnapshotEntity[]>;
   private readonly deltaEnabled: boolean;
+  /** Lưới AOI ([006] §6, M9) — undefined = tắt AOI (client thấy cả world). */
+  private readonly grid?: InterestGrid;
+  private gridTick = -1;
   private readonly baselineTicks: number;
   private readonly stats: SnapshotStats = { bytesSent: 0, keyframes: 0, deltas: 0 };
   private entitiesCache: readonly SnapshotEntity[] | undefined;
@@ -116,9 +123,13 @@ export class RoomEngine<World = unknown, Input = unknown> {
 
     this.deltaEnabled = opts.config.deltaCompression ?? true;
     this.baselineTicks = opts.config.baselineHistoryTicks ?? Math.round(opts.config.tickRate);
-    if (this.deltaEnabled && this.baselineTicks > 0) {
-      this.sentRing = new TickRing<readonly SnapshotEntity[]>(this.baselineTicks);
-    }
+    if (opts.config.aoi) this.grid = new InterestGrid(opts.config.aoi);
+  }
+
+  /** Ring baseline mới cho một client (undefined khi delta tắt). */
+  private newSentRing(): TickRing<readonly SnapshotEntity[]> | undefined {
+    if (!this.deltaEnabled || this.baselineTicks <= 0) return undefined;
+    return new TickRing<readonly SnapshotEntity[]>(this.baselineTicks);
   }
 
   /** Số tick đã mô phỏng (cũng là serverTick của state hiện tại). */
@@ -147,6 +158,8 @@ export class RoomEngine<World = unknown, Input = unknown> {
       connected: true,
       ackTick: -1, // chưa nhận snapshot nào → snapshot đầu tiên là keyframe
       firstSentTick: -1,
+      sentRing: this.newSentRing(),
+      visible: new Set<number>(),
     });
     const handshake: Handshake = {
       protocolVersion: this.protocolVersion,
@@ -191,6 +204,8 @@ export class RoomEngine<World = unknown, Input = unknown> {
     c.connected = true;
     c.ackTick = -1;
     c.firstSentTick = -1;
+    c.sentRing = this.newSentRing(); // baseline phiên cũ vô nghĩa (client đã vứt ring)
+    c.visible.clear(); // AOI dựng lại từ đầu — keyframe sẽ mang đủ entity quanh nó
     c.buffer = new InputBuffer<Input>({
       maxTickSkew: this.maxTickSkew,
       budgetPerTick: this.budgetPerTick,
@@ -268,7 +283,10 @@ export class RoomEngine<World = unknown, Input = unknown> {
     const c = this.clients.get(sessionId);
     if (!c) throw new Error(`RoomEngine: client không tồn tại (${sessionId})`);
 
-    const entities = this.currentEntities();
+    // AOI (M9): mỗi client thấy một tập entity KHÁC NHAU → baseline delta phải là
+    // "cái ta đã gửi cho CHÍNH client này", nên ring baseline nằm trong record của
+    // client, không dùng chung theo room được.
+    const entities = this.visibleFor(c);
     const snap: Snapshot = {
       serverTick: this._tick,
       lastProcessedSeq: c.buffer.lastProcessedSeq,
@@ -282,7 +300,7 @@ export class RoomEngine<World = unknown, Input = unknown> {
       : this.codec.encodeSnapshot(snap);
 
     // State tick này giờ là baseline hợp lệ cho các delta sau (client sẽ ack nó).
-    this.sentRing?.set(this._tick, entities);
+    c.sentRing?.set(this._tick, entities);
     if (c.firstSentTick < 0) c.firstSentTick = this._tick;
 
     this.stats.bytesSent += bytes.byteLength;
@@ -312,11 +330,39 @@ export class RoomEngine<World = unknown, Input = unknown> {
    * `baselineTicks`, nên tick ở đúng tuổi `baselineTicks` đã bị ghi đè bên đó.
    */
   private baselineFor(c: ClientRecord<Input>): SnapshotBaseline | undefined {
-    if (!this.sentRing || c.ackTick < 0) return undefined;
+    if (!c.sentRing || c.ackTick < 0) return undefined;
     if (c.firstSentTick < 0 || c.ackTick < c.firstSentTick) return undefined;
     if (this._tick - c.ackTick >= this.baselineTicks) return undefined; // baseline quá già
-    const entities = this.sentRing.get(c.ackTick);
+    const entities = c.sentRing.get(c.ackTick);
     return entities ? { serverTick: c.ackTick, entities } : undefined;
+  }
+
+  /**
+   * Entity mà client này nhìn thấy ở tick hiện tại ([006] §6, M9).
+   *
+   * Không bật AOI → thấy tất cả. Bật AOI → 3×3 ô quanh entity của chính nó, lọc
+   * theo bán kính + hysteresis; **entity của chính client luôn có mặt** (không thì
+   * nó mất chính mình khi đứng một mình giữa map). Không tìm thấy entity của client
+   * (đã despawn / spectator) → thấy tất cả, để game tự quyết bằng `readEntities`.
+   */
+  private visibleFor(c: ClientRecord<Input>): readonly SnapshotEntity[] {
+    const all = this.currentEntities();
+    if (!this.grid) return all;
+
+    const self = all.find((e) => e.entityId === c.entityId);
+    if (!self) return all;
+
+    if (this.gridTick !== this._tick) {
+      this.grid.rebuild(all);
+      this.gridTick = this._tick;
+    }
+
+    const seen = this.grid.visible(self.posX, self.posY, c.visible);
+    if (!seen.some((e) => e.entityId === c.entityId)) seen.push(self);
+
+    c.visible.clear();
+    for (const e of seen) c.visible.add(e.entityId);
+    return seen;
   }
 
   /** Số liệu băng thông snapshot (nghiệm thu M7). */

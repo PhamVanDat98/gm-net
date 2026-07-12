@@ -47,6 +47,7 @@ export {
   type EncodedState,
   type SnapshotStats,
 } from './engine.js';
+export { InterestGrid, type AoiConfig } from './aoi.js';
 export { seqGreater } from '@gm-net/core'; // re-export cho tương thích (chuyển về core ở M3)
 export {
   InputBuffer,

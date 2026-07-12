@@ -8,6 +8,7 @@
  */
 import type { CustomCodec, SnapshotEntity, WorldBounds } from '@gm-net/core';
 import type { Handshake } from '@gm-net/shared';
+import type { AoiConfig } from './aoi.js';
 
 export type { Handshake };
 
@@ -48,6 +49,11 @@ export interface GameConfig {
    * 0 → tắt reconnect (rớt là despawn ngay).
    */
   reconnectGraceSeconds?: number;
+  /**
+   * Interest management ([006] §6, M9): client chỉ nhận entity trong bán kính
+   * quanh mình (uniform grid + hysteresis). Bỏ trống → tắt AOI, gửi cả world.
+   */
+  aoi?: AoiConfig;
 }
 
 /** Ngữ cảnh khi một player vào room. */

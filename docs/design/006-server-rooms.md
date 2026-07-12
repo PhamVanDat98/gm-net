@@ -121,14 +121,34 @@ kết nối mới, hủy message đang chờ delay), đúng ngữ nghĩa "rớt 
 "server chết". Nghiệm thu: `examples/demo-2d/test/reconnect.e2e.test.ts` — rớt 10s, quay lại,
 chơi tiếp; player kia vẫn thấy entity của người rớt suốt grace.
 
-## 6. Interest management / AOI (Phase 2)
+## 6. Interest management / AOI (Phase 2 — **đã làm, M9**)
 
 **[CHỐT]** grid hoặc quadtree. **[ĐỀ XUẤT]**: bắt đầu bằng **uniform grid** (đơn giản,
-predictable, phù hợp top-down shooter); cell size ≈ bán kính quan tâm / 2; entity đăng ký
-cell theo AABB; tập quan tâm của client = 3×3 cell quanh camera + hysteresis (vào tập ở
-bán kính r, ra ở r×1.2) để tránh flapping spawn/despawn ở mép. Quadtree chỉ khi mật độ
-entity chênh lệch lớn giữa các vùng map. AOI đổi tập → gửi spawn/despawn event trong
-snapshot ([005](005-serialization.md) §4 đã chừa chỗ).
+predictable, phù hợp top-down shooter); tập quan tâm của client = 3×3 cell quanh chính nó +
+hysteresis (vào tập ở bán kính r, ra ở r×1.2) để tránh flapping spawn/despawn ở mép.
+Quadtree chỉ khi mật độ entity chênh lệch lớn giữa các vùng map. AOI đổi tập → spawn/despawn
+đi thẳng trong DELTA ([005](005-serialization.md) §4: entity mới = block FULL, entity mất =
+despawn id — không cần message riêng).
+
+**Đã làm (`server/src/aoi.ts` — `InterestGrid`):** bật bằng `GameConfig.aoi = {radius,
+cellSize?, hysteresis?}`; bỏ trống → tắt AOI, gửi cả world (hành vi Phase 1 giữ nguyên).
+
+**Sửa một con số [ĐỀ XUẤT]:** cell size mặc định = **bán kính RA** (`r × hysteresis`), không
+phải `r/2`. Với `r/2`, khối 3×3 ô chỉ phủ 1.5r < 2r nên entity ở góc trong bán kính quan tâm
+lọt lưới; lấy cell = bán kính ra thì AABB bán kính ra luôn nằm gọn trong **3×3 ô** — đúng
+tinh thần "3×3 cell" mà không hụt vùng. Lưới chỉ là broad-phase; lọc chính xác vẫn bằng
+khoảng cách.
+
+**Bất biến bắt buộc:** entity **của chính client luôn nằm trong tập** (nếu không, người chơi
+đứng một mình giữa map sẽ mất chính mình). Không tìm thấy entity của client (đã despawn /
+spectator) → gửi cả world, để game tự quyết bằng `readEntities`.
+
+**Hệ quả lên delta (M7):** mỗi client thấy một tập entity **khác nhau** → ring baseline phải
+**per-client**, không dùng chung theo room. Đây là thay đổi cấu trúc bắt buộc, không phải tối
+ưu: baseline dùng chung sẽ khiến server tính delta so với thứ client chưa từng nhận.
+
+**Nghiệm thu (M9):** entity ngoài vùng không xuất hiện trong bytes gửi; đi qua ranh giới
+không flapping — `packages/server/test/aoi.test.ts`.
 
 ## 7. Headless client (Phase 2)
 
