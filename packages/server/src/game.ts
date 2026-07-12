@@ -42,6 +42,12 @@ export interface GameConfig {
    * Client ack cũ hơn ngần này → server gửi keyframe ([005] §4).
    */
   baselineHistoryTicks?: number;
+  /**
+   * Grace period (giây) giữ session khi client rớt mạng ([006] §5, M8; mặc định
+   * 30). Entity giữ nguyên trong world suốt grace; quá hạn → despawn thật.
+   * 0 → tắt reconnect (rớt là despawn ngay).
+   */
+  reconnectGraceSeconds?: number;
 }
 
 /** Ngữ cảnh khi một player vào room. */
@@ -73,6 +79,14 @@ export interface GameLogic<World = unknown, Input = unknown> {
    * (`RoomEngine.snapshotAt`), nền tảng cho lag compensation (M10) và debug.
    */
   takeSnapshot?(world: World): unknown;
+  /**
+   * Client rớt mạng, đang trong grace period ([006] §5, M8). Entity **vẫn ở lại
+   * world** — game quyết xử lý: để đứng yên (mặc định nếu không cài hook), làm
+   * bất tử, hạ cánh an toàn… Nếu hết grace, `onPlayerLeave` mới được gọi.
+   */
+  onPlayerDisconnected?(world: World, entityId: number): void;
+  /** Client quay lại trong grace ([006] §5). Entity giữ nguyên; chỉ để game biết. */
+  onPlayerReconnected?(world: World, entityId: number): void;
 }
 
 /** Cặp codec serialization do game đăng ký, tách khỏi logic mô phỏng. */

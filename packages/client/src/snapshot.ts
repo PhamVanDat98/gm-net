@@ -91,6 +91,17 @@ export class SnapshotReceiver<Input = unknown> {
     return this.accept(snap);
   }
 
+  /**
+   * Reconnect ([006] §5, M8): bỏ state + ring baseline. Snapshot của phiên trước
+   * không còn dùng làm baseline được (server đã reset baseline phía nó), và tick
+   * mới nhất cũ sẽ chặn nhầm keyframe resync nếu server tick... vẫn tăng — nhưng
+   * quan trọng hơn: ack tick cũ sẽ khiến server tưởng client còn baseline đó.
+   */
+  reset(): void {
+    this._latest = undefined;
+    this.baselines.clear();
+  }
+
   /** Chống lùi tick + ghi ring baseline + phát cho listener. */
   private accept(snap: Snapshot): Snapshot | undefined {
     if (this._latest && snap.serverTick <= this._latest.serverTick) {

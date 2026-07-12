@@ -90,16 +90,36 @@ người bắn *nhìn thấy* rồi kiểm tra trúng.
      công trên hình học tại thời điểm cũ — rẻ hơn nhiều, đủ cho hitscan.
   Thiên về (b) cho hitscan; (a) để dành khi cần rewind cả tương tác vật lý.
 
-## 5. Reconnection + state resync (Phase 2)
+## 5. Reconnection + state resync (Phase 2 — **đã làm, M8**)
 
 **[CHỐT]** grace period giữ session. **[ĐỀ XUẤT]** chi tiết:
 
-- `onLeave` với lỗi mạng (không phải chủ động thoát): `allowReconnection(client, grace)`
-  của Colyseus, grace mặc định 30s (config). Entity của player: giữ nguyên trong world
-  (đứng yên hoặc rule của game quyết — hook `onPlayerDisconnected`).
-- Reconnect thành công: coi như join lại về mặt dữ liệu — **full snapshot** mới, client
-  vứt toàn bộ prediction/interpolation buffer cũ, reset seq về seq cuối được ack + 1.
-- Quá grace: despawn thật, giải phóng seat.
+- Rớt mạng (không phải chủ động thoát): `allowReconnection(client, grace)` của Colyseus,
+  grace mặc định 30s (`reconnectGraceSeconds`). Entity của player: giữ nguyên trong world
+  (hook `onPlayerDisconnected` để game quyết; mặc định đứng yên).
+- Reconnect thành công: coi như join lại về mặt dữ liệu — handshake mới + **keyframe**
+  (server reset `ackTick`/`firstSentTick` nên delta không thể dựa vào baseline cũ), client
+  vứt snapshot + ring baseline + input chưa ack, interpolation/smoother reset, prediction
+  rebase từ keyframe. Entity giữ nguyên `entityId`.
+- Quá grace: despawn thật (`onPlayerLeave`), giải phóng seat.
+
+**Ba bẫy API Colyseus 0.17 (đều làm e2e đỏ, nay có test khoá):**
+
+1. **`onLeave(client, code)` truyền close code, KHÔNG phải boolean `consented`.** Coi nó là
+   boolean thì `1006` (đứt mạng) là truthy → despawn ngay, `allowReconnection` không bao giờ
+   chạy. Dùng `CloseCode.CONSENTED` (4000) / `SERVER_SHUTDOWN` (4001) để phân biệt. 0.17 còn
+   có hook riêng **`onDrop(client, code)`** cho rớt mạng — dùng nó, giữ `onLeave` phòng thân.
+2. **`client.reconnect()` của colyseus.js 0.16 vỡ với server 0.17** — cùng lệch shape
+   reservation như `joinOrCreate` (xem [004] §7): phải tự gọi `POST /matchmake/reconnect/
+   :roomId` rồi reshape phẳng → lồng.
+3. **Server 0.17 không trả `reconnectionToken` trong response matchmake reconnect, nhưng đòi
+   nó trên query WS lúc bắt tay** (thiếu → đóng với code 524 "bad reconnection token"). Phải
+   tự gắn lại token gốc (`Room.reconnectionToken` = `"<roomId>:<token>"`) vào reservation.
+
+**Công cụ test:** `netem-proxy.setOffline(true/false)` — cắt/nối dây (đóng mọi socket, từ chối
+kết nối mới, hủy message đang chờ delay), đúng ngữ nghĩa "rớt mạng tạm thời" chứ không phải
+"server chết". Nghiệm thu: `examples/demo-2d/test/reconnect.e2e.test.ts` — rớt 10s, quay lại,
+chơi tiếp; player kia vẫn thấy entity của người rớt suốt grace.
 
 ## 6. Interest management / AOI (Phase 2)
 

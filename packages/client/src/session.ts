@@ -180,7 +180,16 @@ export class GameSession<World = unknown, Input = unknown, Snap = unknown> {
   }
 
   private setupPrediction(h: Handshake): void {
-    if (this._prediction) return; // re-handshake (reconnect M8): giữ world hiện tại
+    if (this._prediction) {
+      // Re-handshake = reconnect ([006] §5, M8). Giữ world + prediction (entity vẫn
+      // sống ở server), nhưng vứt mọi thứ neo theo timeline cũ: interpolation còn
+      // sample của tick trước lúc rớt (server đã chạy tiếp → lerp qua khoảng trống
+      // hàng trăm tick), smoother còn transform cũ (sẽ trượt dài khi keyframe về).
+      // Prediction tự rebase khi keyframe tới (serverTick ≫ stateTick → rebase).
+      this.interpolation.reset();
+      this.smoother.reset();
+      return;
+    }
     this._prediction = new PredictionWorld<World, Input, Snap>({
       sim: this.sim,
       world: this.world,

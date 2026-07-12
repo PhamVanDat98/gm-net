@@ -183,9 +183,27 @@ export class GameClient<Input = unknown> {
     this.transport.leave();
   }
 
+  /**
+   * Resync sau reconnect ([006] §5, M8): vứt state phiên cũ — snapshot + ring
+   * baseline (server đã reset baseline phía nó), input chưa ack (server không
+   * nhận được, world đã chạy tiếp), và neo lại clock (kết nối mới, ping warmup
+   * dày trở lại). Prediction/interpolation do lớp trên (`GameSession`) tự dựng lại
+   * từ keyframe kế tiếp.
+   */
+  resync(now = this.now()): void {
+    this.snapshots.reset();
+    this.pipeline.reset();
+    this.clock.connect(now);
+    this._connected = true;
+  }
+
   private handleHandshake(payload: unknown): void {
     const h = payload as Handshake;
+    // Handshake lần hai trên cùng một GameClient = server đã nhận lại ta sau khi
+    // rớt mạng ([006] §5) — không phải join mới.
+    const isReconnect = this._handshake !== undefined;
     this._handshake = h;
+    if (isReconnect) this.resync();
     this.onHandshakeCb?.(h);
   }
 

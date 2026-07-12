@@ -54,6 +54,14 @@ export interface NetemProxy {
   /** Port đang lắng nghe (-1 khi chưa listen). */
   readonly port: number;
   stats(): NetemStats;
+  /**
+   * Cắt/nối mạng ([006] §5 — test reconnect M8). `true`: đóng mọi kết nối đang có
+   * và từ chối kết nối mới (như rút dây mạng); `false`: cho nối lại bình thường.
+   * Proxy vẫn giữ port — client thấy "kết nối bị đóng / từ chối", đúng như mất
+   * mạng tạm thời, không phải server chết.
+   */
+  setOffline(offline: boolean): void;
+  readonly offline: boolean;
   close(): Promise<void>;
 }
 
@@ -90,11 +98,18 @@ export function createNetemProxy(opts: NetemOptions): NetemProxy {
 
   const sockets = new Set<WebSocket>();
   const timers = new Set<NodeJS.Timeout>();
+  let offline = false;
 
   const server = http.createServer((req, res) => forwardHttp(req, res));
   const wss = new WebSocketServer({ noServer: true });
 
   function forwardHttp(req: IncomingMessage, res: ServerResponse): void {
+    if (offline) {
+      // Mất mạng: kể cả HTTP matchmaking cũng không tới được server.
+      res.writeHead(502);
+      res.end('netem-proxy: offline');
+      return;
+    }
     const upstream = http.request(
       {
         host: targetHost,
@@ -169,6 +184,10 @@ export function createNetemProxy(opts: NetemOptions): NetemProxy {
   }
 
   function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (offline) {
+      socket.destroy(); // như rút dây: kết nối mới không bắt tay được
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (downstream) => {
       stats.connections++;
       const upstream = new WebSocket(`ws://${targetHost}:${opts.targetPort}${req.url ?? '/'}`);
@@ -206,6 +225,20 @@ export function createNetemProxy(opts: NetemOptions): NetemProxy {
       dropped: { ...stats.dropped },
       connections: stats.connections,
     }),
+    get offline() {
+      return offline;
+    },
+    setOffline(next: boolean): void {
+      if (offline === next) return;
+      offline = next;
+      if (!next) return;
+      // Cắt: đóng mọi socket đang mở + hủy message đang chờ delay (chúng thuộc
+      // "gói đang trên dây" khi dây đứt — không được giao sau khi nối lại).
+      for (const t of timers) clearTimeout(t);
+      timers.clear();
+      for (const s of sockets) s.terminate();
+      sockets.clear();
+    },
     close(): Promise<void> {
       for (const t of timers) clearTimeout(t);
       timers.clear();

@@ -86,6 +86,17 @@ export class InputPipeline<P = unknown> {
   unacked(): ReadonlyArray<{ seq: number; tick: number; payload: P }> {
     return this.pending;
   }
+
+  /**
+   * Reconnect ([006] §5, M8): bỏ toàn bộ pending. Input chưa ack của phiên trước
+   * đã vô nghĩa — server không nhận được chúng và world đã chạy tiếp suốt lúc rớt;
+   * replay chúng lên timeline mới chỉ tạo misprediction. Seq **tiếp tục tăng**
+   * (không quay về 1): jitter buffer server đã làm mới nên không sợ trùng, còn
+   * quay về 1 sẽ đụng cửa sổ wrap của seq cũ.
+   */
+  reset(): void {
+    this.pending.length = 0;
+  }
 }
 
 export interface InputLeadOptions {

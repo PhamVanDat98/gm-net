@@ -39,7 +39,7 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 | Delta compression (baseline đã ack) | [005](005-serialization.md) §4 | ✅ M7: `DELTA` bitmask field + keyframe policy; **140 B → 22.9 B mỗi client/tick (−83.6%)** với 10 entity |
 | Lag compensation (history ~1s, rewind hit detection) | [006](006-server-rooms.md) §4 | ⬜ M10 |
 | Interest management / AOI (grid/quadtree) | [006](006-server-rooms.md) §6 | ⬜ M9 |
-| Reconnection + state resync (grace period) | [006](006-server-rooms.md) §5 | ⬜ M8 |
+| Reconnection + state resync (grace period) | [006](006-server-rooms.md) §5 | ✅ M8: grace 30s + `onDrop`/`allowReconnection` + resync keyframe; e2e rớt mạng 10s → chơi tiếp |
 | Headless client — bot fill + load testing | [006](006-server-rooms.md) §7 | ⬜ M11 |
 
 ### Phase 3 — Mở rộng

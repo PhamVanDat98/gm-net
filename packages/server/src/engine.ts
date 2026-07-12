@@ -31,6 +31,8 @@ interface ClientRecord<Input> {
   sessionId: string;
   entityId: number;
   buffer: InputBuffer<Input>;
+  /** Đang có socket (false = rớt mạng, đang trong grace period — [006] §5). */
+  connected: boolean;
   /**
    * Tick snapshot mới nhất client báo đã nhận (đính trong INPUT — [005] §6);
    * baseline để tính delta. -1 = chưa ack gì → phải gửi keyframe.
@@ -142,6 +144,7 @@ export class RoomEngine<World = unknown, Input = unknown> {
         maxTickSkew: this.maxTickSkew,
         budgetPerTick: this.budgetPerTick,
       }),
+      connected: true,
       ackTick: -1, // chưa nhận snapshot nào → snapshot đầu tiên là keyframe
       firstSentTick: -1,
     });
@@ -159,6 +162,56 @@ export class RoomEngine<World = unknown, Input = unknown> {
     if (!c) return;
     this.game.onPlayerLeave(this.world, c.entityId);
     this.clients.delete(sessionId);
+  }
+
+  /**
+   * Client rớt mạng, bắt đầu grace period ([006] §5, M8). Record + entity **giữ
+   * nguyên** (world vẫn mô phỏng nó — game quyết qua `onPlayerDisconnected`); chỉ
+   * đánh dấu mất kết nối để tick loop không cố gửi state.
+   */
+  disconnectClient(sessionId: string): void {
+    const c = this.clients.get(sessionId);
+    if (!c || !c.connected) return;
+    c.connected = false;
+    this.game.onPlayerDisconnected?.(this.world, c.entityId);
+  }
+
+  /**
+   * Client quay lại trong grace ([006] §5). Dữ liệu coi như join lại:
+   * - baseline delta **xóa sạch** (`ackTick`/`firstSentTick` reset) → state kế
+   *   tiếp chắc chắn là **keyframe**; snapshot cũ trong ring client đã vô nghĩa.
+   * - jitter buffer input làm mới: client reset chuỗi seq, buffer cũ còn seq/tick
+   *   của phiên trước sẽ dedupe nhầm input mới.
+   *
+   * Entity giữ nguyên (cùng `entityId`). `undefined` nếu session không còn.
+   */
+  reconnectClient(sessionId: string): Handshake | undefined {
+    const c = this.clients.get(sessionId);
+    if (!c) return undefined;
+    c.connected = true;
+    c.ackTick = -1;
+    c.firstSentTick = -1;
+    c.buffer = new InputBuffer<Input>({
+      maxTickSkew: this.maxTickSkew,
+      budgetPerTick: this.budgetPerTick,
+    });
+    this.game.onPlayerReconnected?.(this.world, c.entityId);
+    return {
+      protocolVersion: this.protocolVersion,
+      tickRate: this.config.tickRate,
+      worldBounds: this.config.worldBounds,
+      entityId: c.entityId,
+    };
+  }
+
+  /** Client đang kết nối (false = đang trong grace period sau khi rớt). */
+  isConnected(sessionId: string): boolean {
+    return this.clients.get(sessionId)?.connected ?? false;
+  }
+
+  /** Grace period (giây) cấu hình cho room này; 0 = tắt reconnect. */
+  get reconnectGraceSeconds(): number {
+    return this.config.reconnectGraceSeconds ?? 30;
   }
 
   /** Nạp packet `INPUT` (bytes) từ một client. Byte rác → ném (caller nuốt). */

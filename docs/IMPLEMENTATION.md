@@ -230,5 +230,11 @@ và đánh dấu tại đây khi nghiệm thu:
   client/tick, giảm 83.6%** với 10 entity. Hai bất biến khoá bằng test hồi quy: client giữ
   ring (ack trễ ⇒ baseline không phải bản mới nhất), và `NO_ACK_TICK` sentinel thay cho 0 —
   xem [005 §4](design/005-serialization.md))
-- [ ] M8–M11 — Phase 2
+- [x] M8 — Reconnection + resync (`server`: `reconnectGraceSeconds` + `onDrop`/`allowReconnection`
+  + `disconnectClient`/`reconnectClient` + hook `onPlayerDisconnected`/`onPlayerReconnected`;
+  `client`: `resync()` khi re-handshake + `connectReconnectingRoom` (transport rebind được);
+  `netem-proxy`: `setOffline()`. Nghiệm thu: e2e **rớt mạng 10s → nối lại, giữ entityId,
+  keyframe resync, chơi tiếp** — `examples/demo-2d/test/reconnect.e2e.test.ts`. Ba bẫy API
+  Colyseus 0.17 ghi ở [006 §5](design/006-server-rooms.md))
+- [ ] M9–M11 — Phase 2
 - [ ] M12–M14 — Phase 3

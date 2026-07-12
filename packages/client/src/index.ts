@@ -59,5 +59,7 @@ export type { ClientTransport } from './transport.js';
 export {
   colyseusTransport,
   connectGameRoom,
+  connectReconnectingRoom,
   type ConnectOptions,
+  type ReconnectOptions,
 } from './colyseus-transport.js';
