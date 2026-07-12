@@ -170,9 +170,22 @@ spectator) → gửi cả world, để game tự quyết bằng `readEntities`.
 **Nghiệm thu (M9):** entity ngoài vùng không xuất hiện trong bytes gửi; đi qua ranh giới
 không flapping — `packages/server/test/aoi.test.ts`.
 
-## 7. Headless client (Phase 2)
+## 7. Headless client (Phase 2 — **đã làm, M11**)
 
 **[CHỐT]** bot fill room + load testing. Ghi chú thiết kế: `@gm-net/client` không được
 import DOM ngay từ Phase 1 (điều kiện để chạy trên Node không sửa gì); headless mode chỉ
 là "client không gọi getRenderState + input do script bơm". Load test = N headless client
 + netem/proxy delay, đo metrics server ([008](008-roadmap.md) §5).
+
+**Đã làm:** `HeadlessBot` (`client/src/bot.ts`) — bọc `GameSession` trong một fixed-timestep
+loop, input do script bơm (`input: ({tick, elapsedMs}) => Input`). Đúng như thiết kế đã
+lường: **không có "chế độ headless" nào trong netcode** — client vốn không đụng DOM, bot chỉ
+là "chạy `tick()`, không gọi `getRenderState()`".
+
+**Metrics server** ([004] §8): `TickMetrics` (p50/p99/max của **trọn một tick**: mô phỏng +
+encode + gửi — đo từng phần riêng sẽ bỏ sót cái đắt nhất khi đông, vì encode/gửi nhân theo
+số client) + bandwidth/client. Phát định kỳ qua `GameConfig.onMetrics` (mặc định 1s/lần) —
+load test và export production dùng chung một đường.
+
+**Runner:** `pnpm --filter demo-2d loadtest [bots] [seconds] [--proxy] [--aoi=R]`.
+Số liệu nghiệm thu: [008 §6](008-roadmap.md).

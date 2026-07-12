@@ -55,6 +55,7 @@ export {
   type PredictionMetricsOptions,
   type PredictionMetricsSnapshot,
 } from './metrics.js';
+export { HeadlessBot, type BotOptions, type BotContext } from './bot.js';
 export type { ClientTransport } from './transport.js';
 export {
   colyseusTransport,

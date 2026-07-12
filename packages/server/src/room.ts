@@ -7,6 +7,7 @@
 import { CloseCode, Room, type Client } from 'colyseus';
 import { MessageType } from '@gm-net/core';
 import { RoomEngine, type RoomEngineOptions } from './engine.js';
+import { TickMetrics, type RoomMetrics } from './metrics.js';
 import { TickScheduler } from './tick.js';
 
 export type GameRoomOptions = RoomEngineOptions;
@@ -14,10 +15,40 @@ export type GameRoomOptions = RoomEngineOptions;
 export class GameRoom extends Room {
   private engine!: RoomEngine;
   private scheduler!: TickScheduler;
+  /** Thời lượng tick gần đây ([004] §8, M11) — nguồn của p50/p99. */
+  private readonly tickMetrics = new TickMetrics();
+  private metricsAt = 0;
+  private bytesAtWindowStart = 0;
+  private metricsEveryTicks = 30;
+
+  /** Metrics room hiện tại ([004] §8) — load test / export production đọc. */
+  metrics(): RoomMetrics {
+    const s = this.engine.snapshotStats();
+    return {
+      tick: this.engine.tick,
+      clients: this.engine.clientCount,
+      tickMs: { p50: this.tickMetrics.p50, p99: this.tickMetrics.p99, max: this.tickMetrics.max },
+      bytesSent: s.bytesSent,
+      bytesPerClientPerSecond: this.bandwidthPerClient(s.bytesSent),
+      keyframes: s.keyframes,
+      deltas: s.deltas,
+    };
+  }
+
+  /** Băng thông state/client (B/s) trong cửa sổ metrics gần nhất. */
+  private bandwidthPerClient(bytesSent: number): number {
+    const clients = this.engine.clientCount;
+    if (clients === 0 || this.metricsEveryTicks <= 0) return 0;
+    const windowSec = (this.metricsEveryTicks * this.engine.stepMs) / 1000;
+    return (bytesSent - this.bytesAtWindowStart) / clients / windowSec;
+  }
+
+  private engineOptions?: GameRoomOptions;
 
   onCreate(options: GameRoomOptions): void {
     this.patchRate = null; // tắt schema sync — không broadcast state Colyseus
     this.autoDispose = true;
+    this.engineOptions = options;
     this.engine = new RoomEngine(options);
 
     // INPUT binary → jitter buffer.
@@ -39,6 +70,7 @@ export class GameRoom extends Room {
       }
     });
 
+    this.metricsEveryTicks = options.config.metricsEveryTicks ?? Math.round(options.config.tickRate);
     this.scheduler = new TickScheduler({
       stepMs: this.engine.stepMs,
       onTick: () => this.step(),
@@ -56,6 +88,7 @@ export class GameRoom extends Room {
    * ([005] §4). Engine quyết định; room chỉ gửi đúng kênh.
    */
   private step(): void {
+    const started = performance.now();
     this.engine.advance();
     for (const client of this.clients) {
       // Colyseus đưa client vào this.clients trước khi onJoin chạy — nếu tick
@@ -67,6 +100,16 @@ export class GameRoom extends Room {
       if (!this.engine.isConnected(client.sessionId)) continue;
       const state = this.engine.encodeSnapshotFor(client.sessionId);
       client.sendBytes(state.type, state.bytes);
+    }
+    // Đo TRỌN một tick: mô phỏng + encode + gửi. Đo mỗi phần riêng thì bỏ sót
+    // chính cái đắt nhất khi đông người — encode/gửi nhân theo số client.
+    this.tickMetrics.record(performance.now() - started);
+
+    const opts = this.engineOptions;
+    if (this.metricsEveryTicks > 0 && this.engine.tick - this.metricsAt >= this.metricsEveryTicks) {
+      opts?.config.onMetrics?.(this.metrics());
+      this.metricsAt = this.engine.tick;
+      this.bytesAtWindowStart = this.engine.snapshotStats().bytesSent;
     }
   }
 

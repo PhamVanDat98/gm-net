@@ -40,7 +40,7 @@ Diễn giải thành tiêu chí đo được **[ĐỀ XUẤT]**:
 | Lag compensation (history ~1s, rewind hit detection) | [006](006-server-rooms.md) §4 | ✅ M10: `EntityHistory` + `rewindHitscan`, clamp delay 200ms; có bù → trúng, không bù → trượt |
 | Interest management / AOI (grid/quadtree) | [006](006-server-rooms.md) §6 | ✅ M9: uniform grid + hysteresis; ring baseline chuyển per-client |
 | Reconnection + state resync (grace period) | [006](006-server-rooms.md) §5 | ✅ M8: grace 30s + `onDrop`/`allowReconnection` + resync keyframe; e2e rớt mạng 10s → chơi tiếp |
-| Headless client — bot fill + load testing | [006](006-server-rooms.md) §7 | ⬜ M11 |
+| Headless client — bot fill + load testing | [006](006-server-rooms.md) §7 | ✅ M11: `HeadlessBot` + runner; **50 bot/room: tick p99 13.6ms / ngân sách 33.3ms** (§6) |
 
 ### Phase 3 — Mở rộng
 
@@ -108,11 +108,31 @@ chiều + drop rate + PRNG seed được; forward HTTP matchmaking nguyên vẹn
 kết nối không drop (join/handshake thuộc kênh reliable, không thuộc bài loss). CLI:
 `pnpm --filter demo-2d proxy` (2568 → 2567, RTT +200ms, drop 5%).
 
-## 6. Thứ tự việc tiếp theo (đề xuất)
+## 6. Load test — nghiệm thu M11 (2026-07-12)
 
-1. Bước 3 còn lại: wire protocol tối thiểu (`INPUT`/`SNAPSHOT`/`PING`/`PONG` —
-   [005](005-serialization.md)) + BitWriter/BitReader + test round-trip/golden.
-2. `GameRoom` khung trên Colyseus + tick loop ([006](006-server-rooms.md) §1–2).
-3. Client runtime khung: connect, clock sync, gửi input, nhận snapshot.
-4. Demo 1 box: prediction + reconciliation + proxy delay + đếm misprediction (bước 4).
-5. Benchmark snapshot (bước 5) → chốt quyết định 5.
+Runner: `pnpm --filter demo-2d loadtest [bots] [seconds] [--proxy] [--aoi=R]`
+(`examples/demo-2d/src/loadtest.ts`). Mỗi bot = một `GameSession` **đầy đủ** (prediction +
+reconciliation + interpolation), chỉ không render.
+
+**50 bot/room × 20s** (Node v22.18.0, win32/x64 — server **và** 50 world Rapier chạy chung
+một process, nên tick p99 dưới đây là **cận trên bi quan**; production chỉ chạy server):
+
+| Cấu hình | tick p50 | tick p99 | tick max | bandwidth/client | correction/s | buffer cạn |
+|---|---|---|---|---|---|---|
+| Nối thẳng, AOI tắt | 3.21 ms | **13.64 ms** | 16.60 ms | 15.7 KB/s | 0.00 | 0.00% |
+| Proxy 200ms + 5% loss | 3.10 ms | **11.31 ms** | 14.82 ms | 13.3 KB/s | 0.00 | 0.00% |
+| AOI r=15, nối thẳng | 3.08 ms | **14.75 ms** | 19.52 ms | 11.6 KB/s | 0.00 | 0.00% |
+
+**Kết luận: 50 bot/room ổn định** — tick p99 ≈ 11–15 ms, dưới ngân sách 33.3 ms (30Hz) hơn
+2×; không rubber-band, không cạn buffer, kể cả qua 200ms RTT + 5% loss. Băng thông 12–16 KB/s
+mỗi client với 50 entity đang chuyển động (delta đang bật; AOI r=15 kéo thêm ~26%).
+
+Hồi quy trong CI chạy **16 bot** (`examples/demo-2d/test/loadtest.e2e.test.ts`) — 50 world
+Rapier trong một process CI là quá nặng, nhưng bất biến khoá là như nhau: tick p99 trong ngân
+sách, delta hoạt động, bot chạy đủ nhịp, buffer không cạn.
+
+## 7. Thứ tự việc tiếp theo
+
+Phase 1 và Phase 2 đã xong (M1–M11). Còn lại **Phase 3**, ba nhánh độc lập, làm theo nhu cầu:
+M12 (port 3D), M13 (matchmaker), M14 (metrics export / replay / spectator) —
+xem [IMPLEMENTATION](../IMPLEMENTATION.md).

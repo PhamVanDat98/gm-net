@@ -245,5 +245,11 @@ và đánh dấu tại đây khi nghiệm thu:
   `rayCircle`/`hitscan`; `RoomEngine.rewindTickFor`/`rewindHitscan`; client báo interp delay
   trong INPUT (`u16 interpDelayMs` — [005 §6](design/005-serialization.md)), server clamp
   ≤200ms. Nghiệm thu: **có lag comp → trúng, tắt → trượt** cùng một phát bắn qua RTT 200ms)
-- [ ] M11 — Phase 2
+- [x] M11 — Headless client + load test (`client`: `HeadlessBot` — fixed-timestep loop, input
+  scripted; `server`: `TickMetrics` p50/p99 + bandwidth/client, phát qua `GameConfig.onMetrics`;
+  runner `pnpm --filter demo-2d loadtest`. **Nghiệm thu: 50 bot/room ổn định — tick p99
+  13.6 ms / ngân sách 33.3 ms**, kể cả qua proxy 200ms + 5% loss; số liệu ở
+  [008 §6](design/008-roadmap.md))
+
+**Phase 2 hoàn tất (M7–M11).**
 - [ ] M12–M14 — Phase 3

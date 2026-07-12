@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "server": "tsx src/server.ts",
-    "proxy": "tsx ../../packages/netem-proxy/src/cli.ts --listen 2568 --target 2567 --delay 100 --drop 0.05"
+    "proxy": "tsx ../../packages/netem-proxy/src/cli.ts --listen 2568 --target 2567 --delay 100 --drop 0.05",
+    "loadtest": "tsx src/loadtest.ts"
   },
   "dependencies": {
     "@gm-net/client": "workspace:*",

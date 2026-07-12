@@ -9,6 +9,7 @@
 import type { CustomCodec, SnapshotEntity, WorldBounds } from '@gm-net/core';
 import type { Handshake } from '@gm-net/shared';
 import type { AoiConfig } from './aoi.js';
+import type { RoomMetrics } from './metrics.js';
 
 export type { Handshake };
 
@@ -64,6 +65,10 @@ export interface GameConfig {
    * Chống client khai delay khổng lồ để "bắn vào quá khứ xa".
    */
   lagCompMaxDelayMs?: number;
+  /** Nhịp phát metrics room (tick; mặc định ≈ tickRate ≈ 1s). 0 → tắt. */
+  metricsEveryTicks?: number;
+  /** Nhận metrics room định kỳ ([004] §8, M11): log, export Prometheus, load test… */
+  onMetrics?: (m: RoomMetrics) => void;
 }
 
 /** Ngữ cảnh khi một player vào room. */
