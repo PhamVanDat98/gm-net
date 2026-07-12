@@ -123,6 +123,10 @@ u8  messageType = INPUT
 u32 ackTick               ← snapshot tick mới nhất client đã nhận (phục vụ §4);
                             0xFFFFFFFF (NO_ACK_TICK) = chưa nhận snapshot nào.
                             KHÔNG dùng 0 cho "chưa có" — 0 là tick hợp lệ (§4)
+u16 interpDelayMs         ← interpolation delay hiện tại của client (M10): server
+                            rewind hit detection về đúng thời điểm client NHÌN THẤY
+                            ([006] §4). Server CLAMP (≤200ms mặc định) — không cho
+                            client khai delay khổng lồ để "bắn vào quá khứ xa"
 u16 latestSeq
 u8  count                 ← số input trong packet (redundancy 3–5)
 input × count (từ cũ → mới):

@@ -142,7 +142,9 @@ export class GameSession<World = unknown, Input = unknown, Snap = unknown> {
     this.client.update(now);
     const clockTarget = this.client.targetTick(now);
     const target = this._prediction ? this._prediction.nextInputTick(clockTarget) : clockTarget;
-    const { tick } = this.client.sendInput(payload, now, target);
+    // Báo interp delay THẬT (adaptive, đổi theo jitter) để server rewind hit
+    // detection đúng thời điểm ta đang nhìn thấy remote ([006] §4, M10).
+    const { tick } = this.client.sendInput(payload, now, target, this.interpolation.stats().delayMs);
     this._prediction?.advance(payload, tick);
   }
 

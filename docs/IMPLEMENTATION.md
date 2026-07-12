@@ -241,5 +241,9 @@ và đánh dấu tại đây khi nghiệm thu:
   baseline delta chuyển thành per-client** — mỗi client thấy tập entity khác nhau nên
   baseline dùng chung theo room là sai. Nghiệm thu: entity ngoài vùng không có trong bytes;
   qua ranh giới không flapping — xem [006 §6](design/006-server-rooms.md))
-- [ ] M10–M11 — Phase 2
+- [x] M10 — Lag compensation (`server/src/lag-comp.ts`: `EntityHistory` ring transform ~1s +
+  `rayCircle`/`hitscan`; `RoomEngine.rewindTickFor`/`rewindHitscan`; client báo interp delay
+  trong INPUT (`u16 interpDelayMs` — [005 §6](design/005-serialization.md)), server clamp
+  ≤200ms. Nghiệm thu: **có lag comp → trúng, tắt → trượt** cùng một phát bắn qua RTT 200ms)
+- [ ] M11 — Phase 2
 - [ ] M12–M14 — Phase 3

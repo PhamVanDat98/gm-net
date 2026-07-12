@@ -90,6 +90,26 @@ người bắn *nhìn thấy* rồi kiểm tra trúng.
      công trên hình học tại thời điểm cũ — rẻ hơn nhiều, đủ cho hitscan.
   Thiên về (b) cho hitscan; (a) để dành khi cần rewind cả tương tác vật lý.
 
+**Đã làm (M10) — chọn phương án (b)** (`server/src/lag-comp.ts`):
+
+- `EntityHistory`: ring transform (pos/rot) ~1s, ghi cùng mốc tick với snapshot gửi đi —
+  nên "tua về tick T" đúng bằng "cái client thấy trong snapshot tick T". Config
+  `lagCompHistoryTicks` (mặc định ≈ tickRate; 0 → tắt).
+- Client báo interp delay thật (adaptive) trong `INPUT` ([005](005-serialization.md) §6:
+  `u16 interpDelayMs`); server **clamp** ≤ `lagCompMaxDelayMs` (mặc định 200ms) khi ingest.
+- API: `RoomEngine.rewindTickFor(sessionId, inputTick)` và
+  `RoomEngine.rewindHitscan(sessionId, query, inputTick)` (ray vs circle, bỏ qua người bắn,
+  chọn mục tiêu gần nhất). Ngoài ring (delay quá lớn / lag comp tắt) → kiểm ở tick hiện tại.
+
+**Nghiệm thu (M10):** mục tiêu chạy ngang, người bắn nhắm vào chỗ nó *nhìn thấy* (trễ 200ms
+= 6 tick @30Hz): **có lag comp → trúng; tắt lag comp → trượt** (`packages/server/test/
+lag-comp.test.ts`) — đúng bài "test chứng minh giá trị". Client khai delay 5 giây cũng chỉ
+tua được 200ms.
+
+**Bẫy đã sửa:** cache entity theo tick (tối ưu từ M7) phải **vô hiệu khi world đổi ngoài nhịp
+tick** (join/leave). Không thì snapshot gửi ngay sau `removeClient` vẫn còn entity vừa despawn
+— lag comp làm lộ ra vì `advance()` nay đọc entity sớm hơn để ghi history.
+
 ## 5. Reconnection + state resync (Phase 2 — **đã làm, M8**)
 
 **[CHỐT]** grace period giữ session. **[ĐỀ XUẤT]** chi tiết:

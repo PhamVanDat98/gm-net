@@ -17,6 +17,7 @@ import {
   type SnapshotEntity,
 } from '@gm-net/core';
 import { InterestGrid } from './aoi.js';
+import { EntityHistory, hitscan, type HitResult, type HitscanQuery } from './lag-comp.js';
 import { InputBuffer } from './input-buffer.js';
 import type { GameCodecs, GameConfig, GameLogic, Handshake } from './game.js';
 
@@ -53,6 +54,12 @@ interface ClientRecord<Input> {
   sentRing?: TickRing<readonly SnapshotEntity[]>;
   /** Tập entityId client đang thấy (AOI, M9) — đầu vào của hysteresis tick sau. */
   visible: Set<number>;
+  /**
+   * Interpolation delay client khai trong INPUT (ms), **đã clamp** ([006] §4, M10).
+   * Server rewind hit detection về `inputTick - delay` — client khai láo thì cũng
+   * chỉ tua ngược tối đa `lagCompMaxDelayMs`.
+   */
+  interpDelayMs: number;
 }
 
 /** Băng thông snapshot đo được ([008] Phase 2 — nghiệm thu M7). */
@@ -89,6 +96,9 @@ export class RoomEngine<World = unknown, Input = unknown> {
   /** Lưới AOI ([006] §6, M9) — undefined = tắt AOI (client thấy cả world). */
   private readonly grid?: InterestGrid;
   private gridTick = -1;
+  /** History transform cho lag compensation ([006] §4, M10). */
+  private readonly lagHistory?: EntityHistory;
+  private readonly lagCompMaxDelayMs: number;
   private readonly baselineTicks: number;
   private readonly stats: SnapshotStats = { bytesSent: 0, keyframes: 0, deltas: 0 };
   private entitiesCache: readonly SnapshotEntity[] | undefined;
@@ -124,6 +134,10 @@ export class RoomEngine<World = unknown, Input = unknown> {
     this.deltaEnabled = opts.config.deltaCompression ?? true;
     this.baselineTicks = opts.config.baselineHistoryTicks ?? Math.round(opts.config.tickRate);
     if (opts.config.aoi) this.grid = new InterestGrid(opts.config.aoi);
+
+    this.lagCompMaxDelayMs = opts.config.lagCompMaxDelayMs ?? 200;
+    const lagTicks = opts.config.lagCompHistoryTicks ?? Math.round(opts.config.tickRate);
+    if (lagTicks > 0) this.lagHistory = new EntityHistory(lagTicks);
   }
 
   /** Ring baseline mới cho một client (undefined khi delta tắt). */
@@ -148,6 +162,7 @@ export class RoomEngine<World = unknown, Input = unknown> {
 
   addClient(sessionId: string): { entityId: number; handshake: Handshake } {
     const entityId = this.game.onPlayerJoin(this.world, { sessionId, tick: this._tick });
+    this.invalidateEntities(); // entity mới spawn giữa tick
     this.clients.set(sessionId, {
       sessionId,
       entityId,
@@ -160,6 +175,7 @@ export class RoomEngine<World = unknown, Input = unknown> {
       firstSentTick: -1,
       sentRing: this.newSentRing(),
       visible: new Set<number>(),
+      interpDelayMs: 0,
     });
     const handshake: Handshake = {
       protocolVersion: this.protocolVersion,
@@ -175,6 +191,7 @@ export class RoomEngine<World = unknown, Input = unknown> {
     if (!c) return;
     this.game.onPlayerLeave(this.world, c.entityId);
     this.clients.delete(sessionId);
+    this.invalidateEntities(); // entity vừa despawn giữa tick
   }
 
   /**
@@ -237,6 +254,8 @@ export class RoomEngine<World = unknown, Input = unknown> {
     // ackTick chỉ tiến, không lùi: packet INPUT đến sai thứ tự (jitter) không
     // được kéo baseline về quá khứ. `NO_ACK_TICK` = client chưa có snapshot nào.
     if (msg.ackTick !== NO_ACK_TICK && msg.ackTick > c.ackTick) c.ackTick = msg.ackTick;
+    // Clamp interp delay client khai ([006] §4): không cho "bắn vào quá khứ xa".
+    c.interpDelayMs = Math.max(0, Math.min(this.lagCompMaxDelayMs, msg.interpDelayMs ?? 0));
     c.buffer.ingest(msg, this._tick);
   }
 
@@ -254,6 +273,9 @@ export class RoomEngine<World = unknown, Input = unknown> {
     // Slot tick = state SAU KHI mô phỏng xong tick t (cùng semantics serverTick
     // trong snapshot gửi client).
     this.history?.set(this._tick, this.game.takeSnapshot!(this.world));
+    // History transform cho lag comp (M10) — cùng mốc tick với snapshot gửi đi,
+    // nên "tua về tick T" đúng bằng "cái client thấy ở snapshot tick T".
+    this.lagHistory?.record(this._tick, this.currentEntities());
   }
 
   /**
@@ -308,6 +330,16 @@ export class RoomEngine<World = unknown, Input = unknown> {
     else this.stats.keyframes++;
 
     return { bytes, type: baseline ? MessageType.Delta : MessageType.Snapshot, keyframe: !baseline };
+  }
+
+  /**
+   * World đổi NGOÀI nhịp tick (join/leave despawn entity) → cache entity của tick
+   * hiện tại đã lỗi thời. Không xóa thì snapshot gửi ngay sau đó vẫn còn entity vừa
+   * despawn (và ngược lại, thiếu entity vừa spawn).
+   */
+  private invalidateEntities(): void {
+    this.entitiesTick = -1;
+    this.entitiesCache = undefined;
   }
 
   /** Entity list của tick hiện tại, đọc một lần rồi dùng chung cho mọi client. */
@@ -368,6 +400,36 @@ export class RoomEngine<World = unknown, Input = unknown> {
   /** Số liệu băng thông snapshot (nghiệm thu M7). */
   snapshotStats(): SnapshotStats {
     return { ...this.stats };
+  }
+
+  /**
+   * Tick mà client `sessionId` **đang nhìn thấy** remote entity khi nó gửi input
+   * nhắm `inputTick` ([006] §4): `inputTick − interpDelayTicks`. Interp delay lấy
+   * từ INPUT của chính client (đã clamp lúc ingest).
+   */
+  rewindTickFor(sessionId: string, inputTick = this._tick): number {
+    const c = this.clients.get(sessionId);
+    const delayMs = c ? c.interpDelayMs : 0;
+    const delayTicks = Math.round(delayMs / this.stepMs);
+    return Math.max(0, inputTick - delayTicks);
+  }
+
+  /**
+   * Hit detection **có lag compensation** ([006] §4, M10): tua world về đúng tick
+   * người bắn nhìn thấy rồi raycast trên transform tại tick đó.
+   *
+   * `undefined` = trượt. Ngoài ring history (delay quá lớn / lag comp tắt) → rơi
+   * về transform hiện tại, tức không bù (thà kiểm ở hiện tại còn hơn không kiểm).
+   */
+  rewindHitscan(sessionId: string, q: HitscanQuery, inputTick = this._tick): HitResult | undefined {
+    const tick = this.rewindTickFor(sessionId, inputTick);
+    const entities = this.lagHistory?.at(tick) ?? this.currentEntities().map((e) => ({
+      entityId: e.entityId,
+      posX: e.posX,
+      posY: e.posY,
+      rot: e.rot,
+    }));
+    return hitscan(entities, q, tick);
   }
 
   decodePing(bytes: Uint8Array): PingMessage {

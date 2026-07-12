@@ -39,6 +39,7 @@ describe('golden bytes — đổi format là test đỏ (ép cập nhật doc 00
   it('INPUT (không payload)', () => {
     const bytes = plain.encodeInput({
       ackTick: 100,
+      interpDelayMs: 100, // M10: client báo interp delay để server rewind ([006] §4)
       latestSeq: 9,
       inputs: [{ tick: 50 }, { tick: 51 }],
     });
@@ -46,11 +47,18 @@ describe('golden bytes — đổi format là test đỏ (ép cập nhật doc 00
     expect([...bytes]).toEqual([
       0x00,                    // type INPUT
       0x64, 0x00, 0x00, 0x00,  // ackTick 100
+      0x64, 0x00,              // interpDelayMs 100
       0x09, 0x00,              // latestSeq 9
       0x02,                    // count
       0x32, 0x00, 0x00, 0x00,  // tick 50
       0x33, 0x00, 0x00, 0x00,  // tick 51
     ]);
+  });
+
+  it('INPUT không khai interpDelayMs → 0 trên dây (client chưa đo được)', () => {
+    const bytes = plain.encodeInput({ ackTick: 0, latestSeq: 1, inputs: [{ tick: 1 }] });
+    expect([...bytes.slice(5, 7)]).toEqual([0x00, 0x00]);
+    expect(plain.decodeInput(bytes).interpDelayMs).toBe(0);
   });
 
   it('SNAPSHOT 1 entity với config identity', () => {
@@ -147,9 +155,15 @@ describe('round-trip mọi message', () => {
     for (let iter = 0; iter < 300; iter++) {
       const count = 1 + Math.floor(rng() * 5); // redundancy 3–5 (thử 1–5)
       const inputs = Array.from({ length: count }, () => ({ tick: Math.floor(rng() * 0xffffffff) }));
-      const msg = { ackTick: Math.floor(rng() * 0xffffffff), latestSeq: Math.floor(rng() * 65536), inputs };
+      const msg = {
+        ackTick: Math.floor(rng() * 0xffffffff),
+        interpDelayMs: Math.floor(rng() * 65536),
+        latestSeq: Math.floor(rng() * 65536),
+        inputs,
+      };
       const decoded = plain.decodeInput(plain.encodeInput(msg));
       expect(decoded.ackTick).toBe(msg.ackTick);
+      expect(decoded.interpDelayMs).toBe(msg.interpDelayMs);
       expect(decoded.latestSeq).toBe(msg.latestSeq);
       expect(decoded.inputs.map((e) => e.tick)).toEqual(inputs.map((e) => e.tick));
     }

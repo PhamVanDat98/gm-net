@@ -57,6 +57,13 @@ export interface InputEntry<P = unknown> {
 export interface InputMessage<P = unknown> {
   /** Snapshot tick mới nhất client đã nhận (phục vụ delta compression §4). */
   ackTick: number;
+  /**
+   * Interpolation delay hiện tại của client (ms) — server dùng để rewind hit
+   * detection về đúng thời điểm client *nhìn thấy* ([006] §4, M10). Server
+   * **clamp** giá trị này (mặc định ≤200ms): không cho client tự khai delay khổng
+   * lồ để "bắn vào quá khứ xa". Mặc định 0 khi client chưa đo được.
+   */
+  interpDelayMs?: number;
   /** Seq của input mới nhất trong packet. Seq các input trước suy ra tuần tự. */
   latestSeq: number;
   /** Redundancy 3–5 input, thứ tự cũ → mới. */
@@ -394,6 +401,7 @@ export class ProtocolCodec<InputPayload = unknown> {
     const w = this.newWriter();
     w.writeU8(MessageType.Input);
     w.writeU32(msg.ackTick);
+    w.writeU16(Math.max(0, Math.min(0xffff, Math.round(msg.interpDelayMs ?? 0))));
     w.writeU16(msg.latestSeq);
     w.writeU8(msg.inputs.length);
     for (const entry of msg.inputs) {
@@ -407,6 +415,7 @@ export class ProtocolCodec<InputPayload = unknown> {
     const r = new BitReader(bytes);
     this.expectType(r, MessageType.Input, 'INPUT');
     const ackTick = r.readU32();
+    const interpDelayMs = r.readU16();
     const latestSeq = r.readU16();
     const count = r.readU8();
     const inputs: InputEntry<InputPayload>[] = [];
@@ -415,7 +424,7 @@ export class ProtocolCodec<InputPayload = unknown> {
       const payload = this.inputCodec ? this.inputCodec.decode(r) : undefined;
       inputs.push({ tick, payload });
     }
-    return { ackTick, latestSeq, inputs };
+    return { ackTick, interpDelayMs, latestSeq, inputs };
   }
 
   // --- PING / PONG ---

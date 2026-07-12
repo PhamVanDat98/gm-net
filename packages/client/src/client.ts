@@ -168,12 +168,18 @@ export class GameClient<Input = unknown> {
    * `seq`/`tick` đã gán (map seq→tick vào ring local). Kèm redundancy N input
    * chưa ack.
    */
-  sendInput(payload: Input, now = this.now(), tick = this.targetTick(now)): { seq: number; tick: number } {
+  sendInput(
+    payload: Input,
+    now = this.now(),
+    tick = this.targetTick(now),
+    /** Interp delay hiện tại (ms) — server rewind hit detection theo nó ([006] §4, M10). */
+    interpDelayMs = 0,
+  ): { seq: number; tick: number } {
     // Chưa nhận snapshot nào → sentinel, KHÔNG phải 0: tick 0 là tick thật, server
     // sẽ delta dựa trên baseline mà client join giữa chừng chưa từng nhận ([005] §6).
     const latest = this.snapshots.latestTick;
     const ackTick = latest < 0 ? NO_ACK_TICK : latest;
-    const sampled = this.pipeline.sample(payload, tick, ackTick);
+    const sampled = this.pipeline.sample(payload, tick, ackTick, interpDelayMs);
     this.transport.sendBytes(MessageType.Input, this.codec.encodeInput(sampled.packet));
     return { seq: sampled.seq, tick: sampled.tick };
   }

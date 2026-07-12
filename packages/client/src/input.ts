@@ -58,7 +58,7 @@ export class InputPipeline<P = unknown> {
    * Lấy mẫu một input nhắm `tick`, trả packet (kèm redundancy + `ackTick`).
    * Không tự gửi — caller encode qua codec rồi đẩy xuống transport.
    */
-  sample(payload: P, tick: number, ackTick: number): SampledInput<P> {
+  sample(payload: P, tick: number, ackTick: number, interpDelayMs = 0): SampledInput<P> {
     const seq = this.nextSeq;
     this.nextSeq = (this.nextSeq + 1) & 0xffff;
     this.pending.push({ seq, tick, payload });
@@ -69,7 +69,7 @@ export class InputPipeline<P = unknown> {
     for (let i = from; i < this.pending.length; i++) {
       inputs.push({ tick: this.pending[i].tick, payload: this.pending[i].payload });
     }
-    return { seq, tick, packet: { ackTick, latestSeq: seq, inputs } };
+    return { seq, tick, packet: { ackTick, interpDelayMs, latestSeq: seq, inputs } };
   }
 
   /**

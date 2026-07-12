@@ -54,6 +54,16 @@ export interface GameConfig {
    * quanh mình (uniform grid + hysteresis). Bỏ trống → tắt AOI, gửi cả world.
    */
   aoi?: AoiConfig;
+  /**
+   * Số tick giữ history transform cho lag compensation ([006] §4, M10; mặc định
+   * ≈ tickRate ≈ 1s). 0 → tắt (hit detection kiểm ở tick hiện tại).
+   */
+  lagCompHistoryTicks?: number;
+  /**
+   * Trần interpolation delay client được khai (ms, mặc định 200 — [006] §4).
+   * Chống client khai delay khổng lồ để "bắn vào quá khứ xa".
+   */
+  lagCompMaxDelayMs?: number;
 }
 
 /** Ngữ cảnh khi một player vào room. */
