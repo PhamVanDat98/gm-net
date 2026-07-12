@@ -9,7 +9,7 @@
  * Thuần logic, không đọc đồng hồ hệ thống: mọi mốc thời gian truyền vào để test
  * bằng đồng hồ ảo (đơn vị ms — cùng thang với `PingMessage.clientTime`).
  */
-import type { PongMessage } from '@gm-net/core';
+import { u32TimeDelta, type PongMessage } from '@gm-net/core';
 import { SERVER_TICK_MS } from '@gm-net/shared';
 
 export interface ClockSyncOptions {
@@ -80,11 +80,14 @@ export class ClockSync {
   }
 
   /**
-   * Nạp một PONG nhận lúc `receivedAt`. RTT = receivedAt − clientTime đã echo.
+   * Nạp một PONG nhận lúc `receivedAt`. RTT = receivedAt − clientTime đã echo,
+   * tính theo **số học wrap u32**: clientTime đi qua wire bị cắt còn u32
+   * ([005] §6b) trong khi `receivedAt` là đồng hồ đầy đủ (`Date.now()` ~1.78e12,
+   * không lọt u32) — trừ thẳng cho ra RTT ~1.78e12 ms.
    * Bỏ mẫu âm (đồng hồ lùi / gói hỏng).
    */
   onPong(pong: PongMessage, receivedAt: number): void {
-    const rtt = receivedAt - pong.clientTime;
+    const rtt = u32TimeDelta(pong.clientTime, receivedAt);
     if (!(rtt >= 0)) return;
 
     this.rttSamples.push(rtt);

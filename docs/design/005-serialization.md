@@ -100,6 +100,13 @@ input × count (từ cũ → mới):
 cho đo RTT + ước lượng đồng hồ/tick server ([004] clock sync). Thời gian cắt còn u32 ms
 (wrap ~49 ngày — dư cho RTT vì client trừ với chính đồng hồ mình).
 
+⚠️ **Hệ quả bắt buộc:** `Date.now()` (~1.78e12) **không lọt u32** → clientTime trên dây là
+bản đã cắt. Client phải tính RTT bằng **số học wrap u32** (`u32TimeDelta` trong core, cùng
+họ với `seqDistance`), không trừ thẳng `receivedAt − clientTime`. Trừ thẳng cho ra RTT
+~1.78e12 ms → `serverTickNow` ~2.7e10 → `PredictionWorld.advance()` step hàng tỉ lần → treo
+cứng client. Hồi quy khoá ở `packages/client/test/clock.test.ts` ("đồng hồ thật (epoch ms >
+u32)").
+
 ```
 PING
 u8  messageType = PING

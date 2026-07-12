@@ -1,7 +1,48 @@
 import { describe, expect, it } from 'vitest';
+import { ProtocolCodec } from '@gm-net/core';
 import { ClockSync } from '../src/index.js';
 
 const tickMs = 33;
+
+const codec = new ProtocolCodec({
+  quantization: { world: { minX: -100, maxX: 100, minY: -100, maxY: 100 }, vMax: 50 },
+});
+
+/** PING đi qua dây thật (clientTime cắt còn u32 — [005] §6b) rồi server echo về PONG. */
+function roundTripPong(clientTime: number, serverTick: number) {
+  const ping = codec.decodePing(codec.encodePing({ clientTime }));
+  return codec.decodePong(
+    codec.encodePong({ clientTime: ping.clientTime, serverTime: 0, serverTick }),
+  );
+}
+
+describe('ClockSync — đồng hồ thật (epoch ms > u32)', () => {
+  // Hồi quy: `Date.now()` (~1.78e12) không lọt u32 nên clientTime trên dây bị cắt.
+  // Trừ thẳng receivedAt (đầy đủ) cho clientTime (đã cắt) → RTT ~1.78e12 ms →
+  // serverTickNow ~2.7e10 → PredictionWorld.advance() step Rapier hàng tỉ lần → treo cứng.
+  // [005] §6b chốt: client phải trừ theo số học wrap u32 ("trừ với chính đồng hồ mình").
+  it('RTT đúng khi clientTime bị cắt u32 trên dây', () => {
+    const clock = new ClockSync({ tickMs });
+    const sentAt = 1_783_000_000_000; // Date.now() thật (2026)
+    const pong = roundTripPong(sentAt, 1000);
+
+    clock.onPong(pong, sentAt + 200);
+
+    expect(clock.rtt).toBe(200);
+    expect(clock.serverTickNow(sentAt + 200)).toBeCloseTo(1000 + 100 / tickMs, 6);
+  });
+
+  it('RTT đúng khi đồng hồ u32 wrap giữa ping và pong (~49 ngày)', () => {
+    const clock = new ClockSync({ tickMs });
+    // Ping gửi ngay trước mốc wrap 2^32 ms, pong về sau mốc.
+    const sentAt = 4_294_967_296 - 50; // clientTime trên dây = 2^32 - 50
+    const pong = roundTripPong(sentAt, 1000);
+
+    clock.onPong(pong, sentAt + 200); // receivedAt đã vượt 2^32 → u32 wrap về 150
+
+    expect(clock.rtt).toBe(200);
+  });
+});
 
 describe('ClockSync', () => {
   it('RTT hội tụ về min cửa sổ với jitter, jitter > 0', () => {

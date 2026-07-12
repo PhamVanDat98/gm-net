@@ -22,6 +22,7 @@ export {
   seqGreater,
   seqGreaterEqual,
   seqDistance,
+  u32TimeDelta,
   ProtocolCodec,
   ProtocolError,
   peekMessageType,

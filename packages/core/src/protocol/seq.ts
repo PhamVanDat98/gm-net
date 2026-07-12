@@ -21,3 +21,17 @@ export function seqGreater(a: number, b: number): boolean {
 export function seqGreaterEqual(a: number, b: number): boolean {
   return a === b || seqDistance(a, b) > 0;
 }
+
+/**
+ * Thời gian trôi qua giữa hai mốc ms, khi mốc đầu đã đi qua wire dưới dạng u32
+ * ([005] §6b: PING/PONG cắt thời gian còn u32, wrap ~49 ngày).
+ *
+ * `Date.now()` (~1.78e12) KHÔNG lọt u32, nên trừ thẳng `now - clientTimeTrênDây`
+ * cho ra ~1.78e12 ms — phải quy cả hai về u32 rồi trừ theo wrap. Diễn giải trong
+ * cửa sổ ±2^31 giống {@link seqDistance}: kết quả âm = mốc sau đứng trước mốc
+ * đầu (đồng hồ lùi / gói hỏng) — caller tự quyết bỏ mẫu.
+ */
+export function u32TimeDelta(fromMs: number, toMs: number): number {
+  const d = ((toMs >>> 0) - (fromMs >>> 0)) >>> 0;
+  return d < 0x8000_0000 ? d : d - 0x1_0000_0000;
+}
